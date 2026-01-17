@@ -21,14 +21,14 @@ try:
     # We load the image using PIL to ensure it works correctly as a page_icon
     fav_icon = Image.open(logo_path)
     st.set_page_config(
-        page_title="SniffIt | IE Energy Theft Detection AI", 
+        page_title="SniffIt | Energy Theft Detection AI", 
         page_icon=fav_icon, 
         layout="wide"
     )
 except Exception:
     # Fallback to emoji if image load fails
     st.set_page_config(
-        page_title="SniffIt | IE Energy Theft Detection AI", 
+        page_title="SniffIt | Energy Theft Detection AI", 
         page_icon="🐘", 
         layout="wide"
     )
@@ -358,6 +358,15 @@ for m in months:
     if m in dt_df.columns: dt_df[col] = pd.to_numeric(dt_df[m], errors="coerce").fillna(0)
     else: dt_df[col] = 0
 
+# Calculate the total energy column for the Transformer Data
+month_cols = [f"{m} (kWh)" for m in months]
+dt_df["total_energy_kwh"] = dt_df[month_cols].sum(axis=1)
+
+# Safety check: Ensure columns like 'Ownership' exist before melting
+for col in ["Ownership", "Connection Status"]:
+    if col not in dt_df.columns:
+        dt_df[col] = "Unknown"
+
 ppm_df["Billing_Type"], ppd_df["Billing_Type"] = "PPM", "PPD"
 customer_df = pd.concat([ppm_df, ppd_df], ignore_index=True, sort=False)
 customer_df = add_feeder_column_safe(customer_df, "NAME_OF_DT")
@@ -375,13 +384,19 @@ customer_monthly = customer_df.melt(id_vars=required_id_vars, value_vars=[f"{m} 
 customer_monthly["month"] = customer_monthly["month"].str.replace(" (kWh)", "")
 customer_monthly["month"] = pd.Categorical(customer_monthly["month"], categories=months, ordered=True)
 
-# Added "total_energy_kwh" to id_vars to preserve it during the transformation
+# Define which columns to keep as "Anchors"
+anchor_columns = ["NAME_OF_DT", "DT_Short_Name", "Feeder", "Ownership", "Connection Status", "total_energy_kwh"]
+
+# Only include columns that actually exist in the table to prevent KeyError
+existing_anchors = [c for c in anchor_columns if c in dt_df.columns]
+
 dt_agg_monthly = dt_df.melt(
-    id_vars=["NAME_OF_DT", "DT_Short_Name", "Feeder", "Ownership", "Connection Status", "total_energy_kwh"], 
+    id_vars=existing_anchors, 
     value_vars=[f"{m} (kWh)" for m in months], 
     var_name="month", 
     value_name="total_dt_kwh"
 )
+
 dt_agg_monthly["month"] = dt_agg_monthly["month"].str.replace(" (kWh)", "")
 dt_agg_monthly["month"] = pd.Categorical(dt_agg_monthly["month"], categories=months, ordered=True)
 
