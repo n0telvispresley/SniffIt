@@ -11,37 +11,38 @@ from sklearn.ensemble import IsolationForest
 from sklearn.preprocessing import StandardScaler
 from PIL import Image 
 
-# --- LOGO PATHING LOGIC ---
+# --- 1. LOGO PATHING LOGIC ---
 script_dir = os.path.dirname(os.path.abspath(__file__))
 logo_filename = "IMG_4445.jpeg"
 logo_path = os.path.join(script_dir, logo_filename)
 
-# --- STREAMLIT PAGE CONFIG (Browser Tab Icon) ---
+# --- 2. STREAMLIT PAGE CONFIG & FAVICON ---
 try:
     fav_icon = Image.open(logo_path)
     st.set_page_config(page_title="SniffIt | IE Energy Theft AI", page_icon=fav_icon, layout="wide")
 except Exception:
     st.set_page_config(page_title="SniffIt | IE Energy Theft AI", page_icon="🐘", layout="wide")
 
-# --- CUSTOM CSS: EMERALD GREEN & METALLIC GOLD THEME ---
+# --- 3. CUSTOM CSS: EMERALD GREEN & METALLIC GOLD THEME ---
 st.markdown("""
     <style>
     .stApp { background-color: #002b16; color: #FFFFFF; }
-    h1, h2, h3, h4, h5, h6 { color: #D4AF37 !important; font-family: 'Inter', 'Segoe UI', sans-serif; font-weight: 700 !important; }
+    h1, h2, h3, h4, h5, h6 { color: #D4AF37 !important; font-family: 'Inter', sans-serif; font-weight: 700 !important; }
     [data-testid="stSidebar"] { background-color: #001a0d; border-right: 2px solid #D4AF37; }
     .stButton>button { background-color: #D4AF37 !important; color: #002b16 !important; font-weight: bold; border-radius: 8px; border: 1px solid #B8860B; }
     .stSelectbox, .stSlider, .stTextInput, .stRadio { color: #D4AF37 !important; }
     .stDataFrame { border: 1px solid #D4AF37; background-color: #001a0d; }
     .stPlot { background-color: #ffffff; padding: 10px; border-radius: 10px; }
+    .logo-container { display: flex; justify-content: flex-start; align-items: center; margin-bottom: 20px; }
+    .logo-img { border-radius: 50%; width: 160px; height: 160px; object-fit: cover; border: 4px solid #D4AF37; }
     </style>
     """, unsafe_allow_html=True)
 
 def get_base64_img(path):
     with open(path, "rb") as f:
-        data = f.read()
-    return base64.b64encode(data).decode()
+        return base64.b64encode(f.read()).decode()
 
-# --- Utility Functions ---
+# --- 4. UTILITY FUNCTIONS ---
 def preserve_exact_string(value):
     return str(value) if pd.notna(value) else ""
 
@@ -65,7 +66,7 @@ def add_feeder_column_safe(df, name_of_dt_col="NAME_OF_DT"):
     df["Feeder"] = df["Feeder"].apply(normalize_name)
     return df
 
-# --- Feature Calculation Functions ---
+# --- 5. FEATURE CALCULATION FUNCTIONS ---
 def calculate_pattern_deviation(df, id_col, value_cols):
     results = []
     valid_cols = [c for c in value_cols if c in df.columns]
@@ -96,18 +97,16 @@ def calculate_dt_relative_usage(customer_monthly):
     cust_sum["dt_relative_usage_score"] = cust_sum.apply(_score, axis=1)
     return cust_sum[["ACCOUNT_NUMBER", "dt_relative_usage_score"]]
 
-def generate_escalations_report(ppm_df, ppd_df, escalations_df, customer_scores_df, months_list, final_score_col_name):
+def generate_escalations_report(ppm_df, ppd_df, escalations_df, customer_scores_df, final_score_col_name):
     escalations = escalations_df.copy()
-    acct_col = next((c for c in escalations.columns if c.strip().lower() in ["account no", "account_no", "account number"]), None)
+    acct_col = next((c for c in escalations.columns if c.strip().lower() in ["account no", "account_no"]), None)
     if acct_col is None: return pd.DataFrame()
     customers = pd.concat([ppm_df, ppd_df], ignore_index=True, sort=False)
     if "ACCOUNT_NUMBER" not in customers.columns:
         acct_map = next((c for c in customers.columns if "account" in c.lower() or "acct" in c.lower()), None)
         if acct_map: customers = customers.rename(columns={acct_map: "ACCOUNT_NUMBER"})
-    
     reports = []
-    accounts = escalations[acct_col].astype(str).str.strip().unique()
-    for acc in accounts:
+    for acc in escalations[acct_col].astype(str).str.strip().unique():
         matched = customers[customers["ACCOUNT_NUMBER"].astype(str).str.strip() == str(acc)]
         if matched.empty:
             reports.append({"Account No": acc, "Found": "No", "CUSTOMER_NAME": "Not Found"})
@@ -121,57 +120,53 @@ def generate_escalations_report(ppm_df, ppd_df, escalations_df, customer_scores_
                 reports.append(row)
     return pd.DataFrame(reports)
 
-# --- UI HEADER ---
-col_logo, col_title = st.columns([1, 4])
-with col_logo:
+# --- 6. HEADER ---
+col_l, col_t = st.columns([1, 4])
+with col_l:
     if os.path.exists(logo_path):
         img_b64 = get_base64_img(logo_path)
-        st.markdown(f'<img src="data:image/jpeg;base64,{img_b64}" style="border-radius: 50%; width: 160px; height: 160px; object-fit: cover; border: 4px solid #D4AF37; display: block; margin: auto;">', unsafe_allow_html=True)
-    else: st.markdown("### 🐘 SniffIt")
-
-with col_title:
+        st.markdown(f'<div class="logo-container"><img src="data:image/jpeg;base64,{img_b64}" class="logo-img"></div>', unsafe_allow_html=True)
+    else: st.markdown("### 🐘")
+with col_t:
     st.title("SniffIt🐘")
     st.subheader("Energy Theft Detector AI")
 
-uploaded_file = st.file_uploader("Choose an Excel file (.xlsx)", type=["xlsx"])
-if uploaded_file is None: st.warning("Please upload an Excel file."); st.stop()
+# --- 7. DATA LOADING ---
+uploaded_file = st.file_uploader("Upload Data (.xlsx)", type=["xlsx"])
+if not uploaded_file: st.stop()
 
-# --- DATA LOADING & PREPROCESSING ---
 sheets = pd.read_excel(uploaded_file, sheet_name=None)
-def load_sheet(name):
+def get_sh(name):
     for k in sheets.keys():
         if k.strip().lower() == name.lower(): return sheets[k]
     return None
 
-feeder_df = load_sheet("Feeder Data")
-dt_df = load_sheet("Transformer Data")
-ppm_df = load_sheet("Customer Data_PPM")
-ppd_df = load_sheet("Customer Data_PPD")
-band_df = load_sheet("Feeder Band")
-tariff_df = load_sheet("Customer Tariffs")
-escalations_df = load_sheet("Escalations")
+feeder_df, dt_df = get_sh("Feeder Data"), get_sh("Transformer Data")
+ppm_df, ppd_df = get_sh("Customer Data_PPM"), get_sh("Customer Data_PPD")
+escalations_df = get_sh("Escalations")
 
 if any(x is None for x in [feeder_df, dt_df, ppm_df, ppd_df]): st.error("Essential sheets missing!"); st.stop()
 
+# --- 8. PREPROCESSING (FIXED) ---
 months = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN"]
 for df_ref, unit in [(feeder_df, 1000), (ppm_df, 1), (ppd_df, 1), (dt_df, 1)]:
     for m in months:
-        col_name = f"{m} (kWh)"
-        df_ref[col_name] = pd.to_numeric(df_ref[m], errors="coerce").fillna(0) * unit
+        col = f"{m} (kWh)"
+        if m in df_ref.columns: df_ref[col] = pd.to_numeric(df_ref[m], errors="coerce").fillna(0) * unit
+        else: df_ref[col] = 0.0
 
 dt_df["total_energy_kwh"] = dt_df[[f"{m} (kWh)" for m in months]].sum(axis=1)
-for col in ["Ownership", "Connection Status"]:
-    if col not in dt_df.columns: dt_df[col] = "Unknown"
+for c in ["Ownership", "Connection Status"]:
+    if c not in dt_df.columns: dt_df[c] = "Unknown"
 
-ppm_df["Billing_Type"], ppd_df["Billing_Type"] = "PPM", "PPD"
-customer_df = pd.concat([ppm_df, ppd_df], ignore_index=True, sort=False)
+customer_df = pd.concat([ppm_df.assign(Billing_Type="PPM"), ppd_df.assign(Billing_Type="PPD")], ignore_index=True, sort=False)
 customer_df = add_feeder_column_safe(customer_df)
 dt_df["NAME_OF_DT"] = dt_df.get("New Unique DT Nomenclature", dt_df.get("NAME_OF_DT", ""))
 dt_df["DT_Short_Name"] = dt_df["NAME_OF_DT"].apply(lambda x: get_short_name(x, is_dt=True))
 customer_df["DT_Short_Name"] = customer_df["NAME_OF_DT"].apply(lambda x: get_short_name(x, is_dt=True))
 
 id_vars_cust = ["NAME_OF_DT", "DT_Short_Name", "ACCOUNT_NUMBER", "METER_NUMBER", "CUSTOMER_NAME", "ADDRESS", "Billing_Type", "Feeder", "BUSINESS_UNIT", "UNDERTAKING", "TARIFF"]
-for col in id_vars_cust: 
+for col in id_vars_cust:
     if col not in customer_df.columns: customer_df[col] = ""
 
 customer_monthly = customer_df.melt(id_vars=id_vars_cust, value_vars=[f"{m} (kWh)" for m in months], var_name="month", value_name="billed_kwh")
@@ -180,7 +175,7 @@ customer_monthly["month"] = pd.Categorical(customer_monthly["month"].str.replace
 dt_agg_monthly = dt_df.melt(id_vars=["NAME_OF_DT", "DT_Short_Name", "Feeder", "Ownership", "Connection Status", "total_energy_kwh"], value_vars=[f"{m} (kWh)" for m in months], var_name="month", value_name="total_dt_kwh")
 dt_agg_monthly["month"] = pd.Categorical(dt_agg_monthly["month"].str.replace(" (kWh)", "").str.strip(), categories=months, ordered=True)
 
-# --- HIERARCHICAL FILTERS ---
+# --- 9. HIERARCHICAL FILTERS ---
 st.subheader("Filters 🐘")
 f1, f2, f3, f4, f5, f6 = st.columns([2, 2, 3, 3, 1, 1])
 with f1: sel_bu = st.selectbox("Business Unit", sorted(customer_df["BUSINESS_UNIT"].unique()))
@@ -190,10 +185,10 @@ with f4: sel_dt = st.selectbox("DT", sorted(customer_df[customer_df["Feeder"] ==
 with f5: s_month = st.selectbox("Start", months, index=0)
 with f6: e_month = st.selectbox("End", months, index=5)
 
-model_choice = st.radio("Scoring Model", ('Weighted Rule-Based Model', 'Isolation Forest ML Model'))
+model_choice = st.radio("Analysis Model", ('Weighted Rule-Based Model', 'Isolation Forest ML Model'))
 sel_range = months[months.index(s_month):months.index(e_month)+1]
 
-# --- CALCULATIONS ---
+# --- 10. CALCULATIONS ---
 pattern_scores = calculate_pattern_deviation(customer_df, "ACCOUNT_NUMBER", [f"{m} (kWh)" for m in months])
 zero_scores = calculate_zero_counter(customer_df, "ACCOUNT_NUMBER", [f"{m} (kWh)" for m in months])
 cust_sel = customer_monthly[customer_monthly["month"].isin(sel_range)].copy()
@@ -208,48 +203,50 @@ if model_choice == 'Weighted Rule-Based Model':
 else:
     ml_input = cust_sel.groupby("ACCOUNT_NUMBER")[["F_Pattern", "F_Relative", "F_Zero"]].mean().reset_index()
     X = ml_input[["F_Pattern", "F_Relative", "F_Zero"]].fillna(0)
-    model = IsolationForest(contamination=0.05).fit(X)
-    ml_input["final_score"] = 1 - (model.decision_function(X) - model.decision_function(X).min()) / (model.decision_function(X).max() - model.decision_function(X).min())
+    model = IsolationForest(contamination=0.05, random_state=42).fit(X)
+    ml_input["final_score"] = 1 - (model.decision_function(X) - model.decision_function(X).min()) / (model.decision_function(X).max() - model.decision_function(X).min() + 1e-9)
     cust_sel = cust_sel.merge(ml_input[["ACCOUNT_NUMBER", "final_score"]], on="ACCOUNT_NUMBER", how="left")
     score_col_name = "ML Probability (Avg)"
 
-# --- DT HEATMAP & SUMMARY ---
+# --- 11. DT LOSSES HEATMAP ---
 st.subheader("DT Efficiency Risk Heatmap")
-num_dts = st.number_input("How many high-risk DTs to show?", 5, 50, 15)
-dt_feeder = dt_agg_monthly[dt_agg_monthly["Feeder"] == sel_feeder]
+num_dts = st.number_input("High-risk DT limit", 5, 50, 10)
+dt_feeder_data = dt_agg_monthly[dt_agg_monthly["Feeder"] == sel_feeder]
 cust_billed = cust_sel.groupby(["NAME_OF_DT", "month"], as_index=False)["billed_kwh"].sum()
-dt_merged_m = dt_feeder.merge(cust_billed, on=["NAME_OF_DT", "month"], how="left")
+dt_merged_m = dt_feeder_data.merge(cust_billed, on=["NAME_OF_DT", "month"], how="left")
 dt_merged_m["dt_billing_efficiency"] = (dt_merged_m["billed_kwh"].fillna(0) / dt_merged_m["total_dt_kwh"].replace(0,1)).clip(0,1)
 dt_order = dt_merged_m.groupby("DT_Short_Name")["dt_billing_efficiency"].mean().sort_values().head(num_dts).index
 dt_piv = dt_merged_m.pivot_table(index="DT_Short_Name", columns="month", values="dt_billing_efficiency").reindex(index=dt_order, columns=sel_range)
-plt.figure(figsize=(10, 6)); sns.heatmap(1 - dt_piv, cmap="Reds", annot=True); st.pyplot(plt.gcf()); plt.close()
+plt.figure(figsize=(10, 6)); sns.heatmap(1 - dt_piv, cmap="Reds", annot=True, fmt=".2f"); st.pyplot(plt.gcf()); plt.close()
 
-st.subheader("DT Summary")
-dt_summary = dt_merged_m.groupby(["NAME_OF_DT", "DT_Short_Name"]).agg({"total_dt_kwh":"sum", "billed_kwh":"sum", "dt_billing_efficiency":"mean"}).reset_index()
-st.dataframe(dt_summary.style.format({"dt_billing_efficiency": "{:.3f}"}))
-
-# --- CUSTOMER HEATMAP & LIST ---
+# --- 12. CUSTOMER THEFT HEATMAP ---
 st.subheader("Customer Theft Probability Heatmap")
-num_cust = st.number_input("How many high-risk customers to show?", 5, 100, 15)
+num_cust = st.number_input("High-risk customer limit", 5, 100, 15)
 filtered_c = cust_sel[cust_sel["DT_Short_Name"] == sel_dt]
 top_acc = filtered_c.groupby("ACCOUNT_NUMBER")["final_score"].mean().sort_values(ascending=False).head(num_cust).index
 cust_piv = filtered_c[filtered_c["ACCOUNT_NUMBER"].isin(top_acc)].pivot_table(index="ACCOUNT_NUMBER", columns="month", values="final_score").reindex(index=top_acc, columns=sel_range)
-plt.figure(figsize=(10, 6)); sns.heatmap(cust_piv, cmap="Reds", annot=True); st.pyplot(plt.gcf()); plt.close()
+plt.figure(figsize=(10, 6)); sns.heatmap(cust_piv, cmap="Reds", annot=True, fmt=".2f"); st.pyplot(plt.gcf()); plt.close()
+
+# --- 13. DT SUMMARY & LISTS ---
+st.subheader("DT Summary")
+dt_summary = dt_merged_m.groupby(["NAME_OF_DT", "DT_Short_Name"]).agg({"total_dt_kwh":"sum", "billed_kwh":"sum", "dt_billing_efficiency":"mean"}).reset_index()
+st.dataframe(dt_summary.style.format({"dt_billing_efficiency": "{:.3f}"}), use_container_width=True)
 
 st.subheader("Customer Risk List")
-risk_list = filtered_c.groupby(["ACCOUNT_NUMBER", "CUSTOMER_NAME", "Billing_Type"], as_index=False)["final_score"].mean().sort_values("final_score", ascending=False)
-st.dataframe(risk_list.style.format({"final_score": "{:.3f}"}))
+risk_list = filtered_c.groupby(["ACCOUNT_NUMBER", "CUSTOMER_NAME", "METER_NUMBER", "Billing_Type"], as_index=False)["final_score"].mean().sort_values("final_score", ascending=False)
+st.dataframe(risk_list.style.format({"final_score": "{:.3f}"}), use_container_width=True)
 
-# --- ESCALATIONS REPORT ---
+# --- 14. ESCALATIONS REPORT ---
 st.subheader("Escalations Report")
-cust_avg = cust_sel.groupby("ACCOUNT_NUMBER", as_index=False).agg({"final_score": "mean"}).rename(columns={"final_score": score_col_name})
-escal_report = generate_escalations_report(ppm_df, ppd_df, escalations_df, cust_avg, months, score_col_name)
-st.dataframe(escal_report)
+cust_avg_scores = cust_sel.groupby("ACCOUNT_NUMBER", as_index=False).agg({"final_score": "mean"}).rename(columns={"final_score": score_col_name})
+escal_report = generate_escalations_report(ppm_df, ppd_df, escalations_df, cust_avg_scores, score_col_name)
+st.dataframe(escal_report, use_container_width=True)
+
 towrite = io.BytesIO()
 with pd.ExcelWriter(towrite, engine='openpyxl') as writer:
     if not escal_report.empty: escal_report.to_excel(writer, index=False, sheet_name="Escalations")
     risk_list.to_excel(writer, index=False, sheet_name="Customer Analysis")
-st.download_button(label="📥 Download Full Analysis🐘", data=towrite.getvalue(), file_name="SniffIt_Report.xlsx")
+st.download_button(label="📥 Download Full Analysis (Excel)🐘", data=towrite.getvalue(), file_name="SniffIt_Report.xlsx")
 
 st.markdown("---")
-st.markdown("Built by Elvis Ebenuwah. SniffIt🐘 2026.")
+st.markdown("Built by Elvis Ebenuwah for Ikeja Electric. SniffIt🐘 2026.")
