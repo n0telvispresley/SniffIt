@@ -241,7 +241,7 @@ def run_isolation_forest(df, features, contamination_rate=0.01):
     return df
 
 # --- Begin main app logic ---
-st.title("SniffIt🐶")
+st.title("SniffIt🐘")
 
 st.subheader("Energy Theft Detector (ML Upgrade)")
 uploaded_file = st.file_uploader("Choose an Excel file (.xlsx)", type=["xlsx"])
@@ -733,4 +733,4 @@ except Exception as e:
     st.error(f"Failed to generate escalations report: {e}")
 
 # Footer
-st.markdown("Built by Elvis Ebenuwah for Ikeja Electric. SniffIt🐶 2025.")
+st.markdown("Built by Elvis Ebenuwah. SniffIt🐘 2026.")
