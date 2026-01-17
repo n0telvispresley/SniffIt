@@ -761,4 +761,4 @@ except Exception as e:
     st.error(f"Failed to generate escalations report: {e}")
 
 # Footer
-st.markdown("Built by Elvis Ebenuwah for Ikeja Electric. SniffIt🐘 2026.")
+st.markdown("Built by Elvis Ebenuwah. SniffIt🐘 2026.")
