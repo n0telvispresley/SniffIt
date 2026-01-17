@@ -6,6 +6,7 @@ import seaborn as sns
 import re
 import io
 import os
+import base64 # Added for image encoding
 from sklearn.ensemble import IsolationForest
 from sklearn.preprocessing import StandardScaler
 
@@ -76,12 +77,9 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- LOGO PATHING LOGIC (UPDATED) ---
-# Get the directory where this script is running
+# --- LOGO PATHING LOGIC ---
 script_dir = os.path.dirname(os.path.abspath(__file__))
-# Set the exact filename provided
 logo_filename = "IMG_4445.jpeg"
-# Create the absolute path
 logo_path = os.path.join(script_dir, logo_filename)
 
 # --- UTILITY FUNCTIONS (PRESERVED) ---
@@ -240,18 +238,29 @@ def run_isolation_forest(df, features, contamination_rate=0.01):
 
 # --- BEGIN MAIN APP LOGIC ---
 
-# UI HEADER (UPDATED FOR IMG_4445.jpeg)
+# UI HEADER (UPDATED FOR CIRCULAR LOGO)
 col_logo, col_title = st.columns([1, 4])
 with col_logo:
     if os.path.exists(logo_path):
         try:
-            st.image(logo_path, width=160)
+            # Read and encode image to base64 for HTML embedding with styles
+            with open(logo_path, "rb") as f:
+                img_data = f.read()
+            img_b64 = base64.b64encode(img_data).decode()
+
+            # Render as HTML with CSS for circle shape and gold border
+            st.markdown(
+                f"""
+                <img src="data:image/jpeg;base64,{img_b64}"
+                     style="border-radius: 50%; width: 160px; height: 160px; object-fit: cover; border: 4px solid #D4AF37; display: block; margin-left: auto; margin-right: auto;">
+                """,
+                unsafe_allow_html=True,
+            )
         except Exception as e:
-             st.error(f"Error displaying {logo_filename}. It might be too large or corrupted.")
+             st.error(f"Error displaying logo: {e}")
              st.markdown("### 🐘 SniffIt")
     else:
         st.markdown("### 🐘 SniffIt")
-        # st.caption(f"Logo not found: {logo_filename}")
 
 with col_title:
     st.title("SniffIt🐘")
