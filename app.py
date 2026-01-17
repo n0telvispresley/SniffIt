@@ -290,7 +290,7 @@ if uploaded_file is None:
     st.warning("Please upload an Excel file to proceed.")
     st.stop()
 
-# --- Data Loading and Sheet Checks (Preserved) ---
+# --- Data Loading and Sheet Checks (FIXED ValueError LOGIC) ---
 try:
     sheets = pd.read_excel(
         uploaded_file,
@@ -313,13 +313,34 @@ def _get_sheet_case_insensitive(sheets_dict, target_name):
             return sheets_dict[k]
     return None
 
-feeder_df = sheets.get("Feeder Data") or _get_sheet_case_insensitive(sheets, "Feeder Data")
-dt_df = sheets.get("Transformer Data") or _get_sheet_case_insensitive(sheets, "Transformer Data")
-ppm_df = sheets.get("Customer Data_PPM") or _get_sheet_case_insensitive(sheets, "Customer Data_PPM")
-ppd_df = sheets.get("Customer Data_PPD") or _get_sheet_case_insensitive(sheets, "Customer Data_PPD")
-band_df = sheets.get("Feeder Band") or _get_sheet_case_insensitive(sheets, "Feeder Band")
-tariff_df = sheets.get("Customer Tariffs") or _get_sheet_case_insensitive(sheets, "Customer Tariffs")
-escalations_df = sheets.get("Escalations") or _get_sheet_case_insensitive(sheets, "Escalations")
+# Explicit checks to avoid ambiguity error
+feeder_df = sheets.get("Feeder Data")
+if feeder_df is None:
+    feeder_df = _get_sheet_case_insensitive(sheets, "Feeder Data")
+
+dt_df = sheets.get("Transformer Data")
+if dt_df is None:
+    dt_df = _get_sheet_case_insensitive(sheets, "Transformer Data")
+
+ppm_df = sheets.get("Customer Data_PPM")
+if ppm_df is None:
+    ppm_df = _get_sheet_case_insensitive(sheets, "Customer Data_PPM")
+
+ppd_df = sheets.get("Customer Data_PPD")
+if ppd_df is None:
+    ppd_df = _get_sheet_case_insensitive(sheets, "Customer Data_PPD")
+
+band_df = sheets.get("Feeder Band")
+if band_df is None:
+    band_df = _get_sheet_case_insensitive(sheets, "Feeder Band")
+
+tariff_df = sheets.get("Customer Tariffs")
+if tariff_df is None:
+    tariff_df = _get_sheet_case_insensitive(sheets, "Customer Tariffs")
+
+escalations_df = sheets.get("Escalations")
+if escalations_df is None:
+    escalations_df = _get_sheet_case_insensitive(sheets, "Escalations")
 
 if any(df is None for df in [feeder_df, dt_df, ppm_df, ppd_df, band_df, tariff_df, escalations_df]):
     st.error("One or more required sheets missing.")
