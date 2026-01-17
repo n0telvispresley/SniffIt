@@ -346,23 +346,32 @@ if any(df is None for df in [feeder_df, dt_df, ppm_df, ppd_df, band_df, tariff_d
     st.error("One or more required sheets missing.")
     st.stop()
 
-# --- Preprocessing (Preserved) ---
+# --- Preprocessing (Preserved & Fixed) ---
 months = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN"]
+
+# 1. Process Feeder and Customer Data
 for df, unit in [(feeder_df, 1000), (ppm_df, 1), (ppd_df, 1)]:
     for m in months:
         col = f"{m} (kWh)"
-        if m in df.columns: df[col] = pd.to_numeric(df[m], errors="coerce").fillna(0) * unit
-        else: df[col] = 0
+        if m in df.columns:
+            df[col] = pd.to_numeric(df[m], errors="coerce").fillna(0) * unit
+        else:
+            df[col] = 0.0
+
+# 2. Process Transformer Data (dt_df)
 for m in months:
     col = f"{m} (kWh)"
-    if m in dt_df.columns: dt_df[col] = pd.to_numeric(dt_df[m], errors="coerce").fillna(0)
-    else: dt_df[col] = 0
+    if m in dt_df.columns:
+        dt_df[col] = pd.to_numeric(dt_df[m], errors="coerce").fillna(0)
+    else:
+        dt_df[col] = 0.0
 
-dt_df["total_energy_kwh"] = dt_df[[f"{m} (kWh)" for m in months]].sum(axis=1)
-
-# Calculate the total energy column for the Transformer Data
+# 3. Calculate Total Energy (Do this ONLY ONCE)
 month_cols = [f"{m} (kWh)" for m in months]
 dt_df["total_energy_kwh"] = dt_df[month_cols].sum(axis=1)
+
+# 4. Final Safety Check: Ensure the total is numeric
+dt_df["total_energy_kwh"] = pd.to_numeric(dt_df["total_energy_kwh"], errors="coerce").fillna(0)
 
 # Safety check: Ensure columns like 'Ownership' exist before melting
 for col in ["Ownership", "Connection Status"]:
