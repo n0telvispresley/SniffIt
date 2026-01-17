@@ -283,7 +283,7 @@ with col_logo:
 
 with col_title:
     st.title("SniffIt🐘")
-    st.subheader("Energy Theft Detector (ML Upgrade)")
+    st.subheader("Energy Theft Detector AI")
 
 uploaded_file = st.file_uploader("Choose an Excel file (.xlsx)", type=["xlsx"])
 if uploaded_file is None:
