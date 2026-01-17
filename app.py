@@ -15,93 +15,47 @@ st.set_page_config(page_title="IE Energy Theft Detection Dashboard (ML)", layout
 # --- CUSTOM CSS: GREEN & GOLD THEME ---
 st.markdown("""
     <style>
-    /* Main Background and Text */
     .stApp {
         background-color: #002b16; /* Deep Emerald Green */
         color: #FFFFFF;
     }
-    
-    /* Headers and Titles */
     h1, h2, h3, h4, h5, h6 {
         color: #D4AF37 !important; /* Metallic Gold */
         font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
         font-weight: 700 !important;
     }
-
-    /* Sidebar Styling */
     [data-testid="stSidebar"] {
         background-color: #001a0d;
         border-right: 2px solid #D4AF37;
     }
-    
-    /* Buttons */
     .stButton>button {
         background-color: #D4AF37 !important;
         color: #002b16 !important;
         font-weight: bold;
         border-radius: 8px;
         border: 1px solid #B8860B;
-        transition: 0.3s ease-in-out;
     }
     .stButton>button:hover {
         background-color: #FFD700 !important;
         transform: scale(1.02);
-        box-shadow: 0px 0px 10px rgba(212, 175, 55, 0.4);
     }
-
-    /* Input Widgets */
-    .stSelectbox, .stSlider, .stTextInput, .stRadio {
-        color: #D4AF37 !important;
-    }
-    
-    /* Dataframe Styling */
     .stDataFrame {
         border: 1px solid #D4AF37;
     }
-
-    /* Success/Info/Warning Messages */
     .stAlert {
         background-color: #004d26;
         color: #f1f1f1;
         border: 1px solid #D4AF37;
     }
-    
-    /* Heatmap/Plot Containers */
-    .stPlot {
-        background-color: #ffffff;
-        padding: 10px;
-        border-radius: 10px;
-    }
-
-    /* Footer */
-    .footer {
-        position: fixed;
-        left: 0;
-        bottom: 0;
-        width: 100%;
-        background-color: #001a0d;
-        color: #D4AF37;
-        text-align: center;
-        padding: 10px;
-        font-size: 14px;
-        border-top: 1px solid #D4AF37;
-    }
     </style>
     """, unsafe_allow_html=True)
 
-# --- LOGO PATHING LOGIC ---
+# --- LOGO PATHING (BULLETPROOF) ---
+# This looks for the logo in the same folder as the script
 script_dir = os.path.dirname(os.path.abspath(__file__))
-# Check for renamed file (No spaces)
-possible_names = ["SniffitLogo.png", "sniffitlogo.png", "Sniffit_Logo.png", "Sniffit Logo.png"]
-logo_path = None
+logo_path = os.path.join(script_dir, "SniffitLogo.png")
 
-for name in possible_names:
-    test_path = os.path.join(script_dir, name)
-    if os.path.exists(test_path):
-        logo_path = test_path
-        break
-
-# --- Utility Functions (Preserved) ---
+# --- Utility Functions (Preserved Exactly) ---
 def preserve_exact_string(value):
     if pd.isna(value) or value is None:
         return ""
@@ -133,7 +87,7 @@ def add_feeder_column_safe(df, name_of_dt_col="NAME_OF_DT"):
     df["Feeder"] = df["Feeder"].apply(normalize_name)
     return df
 
-# --- Feature Calculation Functions (Preserved) ---
+# --- Feature Calculation Functions (Preserved Exactly) ---
 def calculate_pattern_deviation(df, id_col, value_cols):
     results = []
     valid_cols = [c for c in value_cols if c in df.columns]
@@ -167,7 +121,6 @@ def calculate_dt_relative_usage(customer_monthly):
     cust_sum = customer_monthly.groupby(["ACCOUNT_NUMBER", "NAME_OF_DT"], as_index=False)["billed_kwh"].sum()
     dt_avg = cust_sum[cust_sum["billed_kwh"] > 0].groupby("NAME_OF_DT", as_index=False)["billed_kwh"].mean().rename(columns={"billed_kwh": "dt_avg_kwh"})
     cust_sum = cust_sum.merge(dt_avg, on="NAME_OF_DT", how="left")
-    
     def _score(row):
         if pd.isna(row["dt_avg_kwh"]) or row["dt_avg_kwh"] == 0:
             return 0.5 if row["billed_kwh"] == 0 else 0.1
@@ -177,7 +130,6 @@ def calculate_dt_relative_usage(customer_monthly):
             return 0.1
         ratio = row["billed_kwh"] / row["dt_avg_kwh"]
         return 0.1 + (0.9 - 0.1) * (0.7 - ratio) / (0.7 - 0.3)
-    
     cust_sum["dt_relative_usage_score"] = cust_sum.apply(_score, axis=1)
     return cust_sum[["ACCOUNT_NUMBER", "dt_relative_usage_score"]]
 
@@ -200,40 +152,30 @@ def generate_escalations_report(ppm_df, ppd_df, escalations_df, customer_scores_
                 break
     if "ACCOUNT_NUMBER" not in customers.columns:
         customers["ACCOUNT_NUMBER"] = ""
-    
     reports = []
     for acc in accounts:
         matched = customers[customers["ACCOUNT_NUMBER"].astype(str).str.strip() == str(acc).strip()]
         if matched.empty:
-            reports.append({
-                "Account No": acc, "Found": "No", "Billing_Type": "", "ACCOUNT_NUMBER": acc,
-                "CUSTOMER_NAME": "Not Found", "Feeder": "", "NAME_OF_DT": "", "METER_NUMBER": "",
-                **{m: np.nan for m in months_list}, final_score_col_name: np.nan
-            })
+            reports.append({"Account No": acc, "Found": "No", "CUSTOMER_NAME": "Not Found"})
         else:
             for _, r in matched.iterrows():
-                row = {
-                    "Account No": acc, "Found": "Yes", "Billing_Type": r.get("Billing_Type", ""),
-                    "ACCOUNT_NUMBER": r.get("ACCOUNT_NUMBER", ""), "CUSTOMER_NAME": r.get("CUSTOMER_NAME", ""),
-                    "Feeder": r.get("Feeder", ""), "NAME_OF_DT": r.get("NAME_OF_DT", ""), "METER_NUMBER": r.get("METER_NUMBER", "")
-                }
+                row = {"Account No": acc, "Found": "Yes", "Billing_Type": r.get("Billing_Type", ""),
+                       "ACCOUNT_NUMBER": r.get("ACCOUNT_NUMBER", ""), "CUSTOMER_NAME": r.get("CUSTOMER_NAME", ""),
+                       "Feeder": r.get("Feeder", ""), "NAME_OF_DT": r.get("NAME_OF_DT", ""), "METER_NUMBER": r.get("METER_NUMBER", "")}
                 for m in months_list:
                     colname = f"{m} (kWh)"
                     row[m] = r.get(colname, np.nan) if colname in r.index else (r.get(m, np.nan) if m in r.index else np.nan)
-                
                 tp = np.nan
                 try:
                     tp_row = customer_scores_df[customer_scores_df["ACCOUNT_NUMBER"].astype(str) == str(acc)]
                     if not tp_row.empty and final_score_col_name in tp_row.columns:
                          tp = float(tp_row[final_score_col_name].mean())
-                except Exception:
-                    tp = np.nan
-                
+                except Exception: tp = np.nan
                 row[final_score_col_name] = tp
                 reports.append(row)
     return pd.DataFrame(reports)
 
-# --- ML Function (Preserved) ---
+# --- ML Function ---
 @st.cache_data
 def run_isolation_forest(df, features, contamination_rate=0.01):
     st.info(f"Running Isolation Forest on {len(df)} customers with a contamination rate of {contamination_rate*100}%.")
@@ -245,9 +187,7 @@ def run_isolation_forest(df, features, contamination_rate=0.01):
         model = IsolationForest(n_estimators=100, contamination=contamination_rate, random_state=42, n_jobs=-1)
         model.fit(X_scaled)
     except Exception as e:
-        st.error(f"Isolation Forest failed to fit: {e}")
-        df['theft_probability_ml'] = 0.0
-        return df
+        st.error(f"Isolation Forest failed to fit: {e}"); df['theft_probability_ml'] = 0.0; return df
     anomaly_score = model.decision_function(X_scaled)
     min_score, max_score = anomaly_score.min(), anomaly_score.max()
     normalized_score = (anomaly_score - min_score) / (max_score - min_score)
@@ -255,49 +195,37 @@ def run_isolation_forest(df, features, contamination_rate=0.01):
     st.success("Isolation Forest analysis complete.")
     return df
 
-# --- BEGIN MAIN APP LOGIC ---
-
-# UI HEADER
+# --- Begin main app logic ---
 col_logo, col_title = st.columns([1, 4])
 with col_logo:
-    if logo_path:
+    if os.path.exists(logo_path):
         st.image(logo_path, width=160)
     else:
         st.markdown("### 🐘 SniffIt")
-        # Optional: st.caption(f"Logo not found in directory.")
-
 with col_title:
     st.title("SniffIt🐘")
     st.subheader("Energy Theft Detector (ML Upgrade)")
 
 uploaded_file = st.file_uploader("Choose an Excel file (.xlsx)", type=["xlsx"])
 if uploaded_file is None:
-    st.warning("Please upload an Excel file to proceed.")
-    st.stop()
+    st.warning("Please upload an Excel file to proceed."); st.stop()
 
-# --- Data Loading and Sheet Checks (Preserved) ---
+# --- Data Loading and Sheet Checks ---
 try:
-    sheets = pd.read_excel(
-        uploaded_file,
-        sheet_name=None,
-        converters={
-            "Feeder Data": {"Feeder": preserve_exact_string},
-            "Transformer Data": {"New Unique DT Nomenclature": preserve_exact_string, "Ownership": preserve_exact_string, "Connection Status": preserve_exact_string},
-            "Customer Data_PPM": {"NAME_OF_DT": preserve_exact_string, "NAME_OF_FEEDER": preserve_exact_string, "ACCOUNT_NUMBER": preserve_exact_string, "METER_NUMBER": preserve_exact_string, "BUSINESS_UNIT": preserve_exact_string, "UNDERTAKING": preserve_exact_string, "TARIFF": preserve_exact_string},
-            "Customer Data_PPD": {"NAME_OF_DT": preserve_exact_string, "NAME_OF_FEEDER": preserve_exact_string, "ACCOUNT_NUMBER": preserve_exact_string, "METER_NUMBER": preserve_exact_string, "BUSINESS_UNIT": preserve_exact_string, "UNDERTAKING": preserve_exact_string, "TARIFF": preserve_exact_string},
-            "Feeder Band": {"BAND": preserve_exact_string, "Feeder": preserve_exact_string, "Short Name": preserve_exact_string},
-            "Customer Tariffs": {"Tariff": preserve_exact_string},
-            "Escalations": {"Feeder": preserve_exact_string, "DT Nomenclature": preserve_exact_string, "Account No": preserve_exact_string}
-        }
-    )
-except Exception as e:
-    st.error(f"Error reading Excel file: {e}")
-    st.stop()
+    sheets = pd.read_excel(uploaded_file, sheet_name=None, converters={
+        "Feeder Data": {"Feeder": preserve_exact_string},
+        "Transformer Data": {"New Unique DT Nomenclature": preserve_exact_string, "Ownership": preserve_exact_string, "Connection Status": preserve_exact_string},
+        "Customer Data_PPM": {"NAME_OF_DT": preserve_exact_string, "NAME_OF_FEEDER": preserve_exact_string, "ACCOUNT_NUMBER": preserve_exact_string, "METER_NUMBER": preserve_exact_string, "BUSINESS_UNIT": preserve_exact_string, "UNDERTAKING": preserve_exact_string, "TARIFF": preserve_exact_string},
+        "Customer Data_PPD": {"NAME_OF_DT": preserve_exact_string, "NAME_OF_FEEDER": preserve_exact_string, "ACCOUNT_NUMBER": preserve_exact_string, "METER_NUMBER": preserve_exact_string, "BUSINESS_UNIT": preserve_exact_string, "UNDERTAKING": preserve_exact_string, "TARIFF": preserve_exact_string},
+        "Feeder Band": {"BAND": preserve_exact_string, "Feeder": preserve_exact_string, "Short Name": preserve_exact_string},
+        "Customer Tariffs": {"Tariff": preserve_exact_string},
+        "Escalations": {"Feeder": preserve_exact_string, "DT Nomenclature": preserve_exact_string, "Account No": preserve_exact_string}
+    })
+except Exception as e: st.error(f"Error reading Excel file: {e}"); st.stop()
 
 def _get_sheet_case_insensitive(sheets_dict, target_name):
     for k in sheets_dict.keys():
-        if k.strip().lower() == target_name.strip().lower():
-            return sheets_dict[k]
+        if k.strip().lower() == target_name.strip().lower(): return sheets_dict[k]
     return None
 
 feeder_df = sheets.get("Feeder Data") or _get_sheet_case_insensitive(sheets, "Feeder Data")
@@ -309,20 +237,13 @@ tariff_df = sheets.get("Customer Tariffs") or _get_sheet_case_insensitive(sheets
 escalations_df = sheets.get("Escalations") or _get_sheet_case_insensitive(sheets, "Escalations")
 
 if any(df is None for df in [feeder_df, dt_df, ppm_df, ppd_df, band_df, tariff_df, escalations_df]):
-    st.error("One or more required sheets missing. Check file structure.")
-    st.stop()
+    st.error("Missing sheets in Excel."); st.stop()
 
-# --- Data Preprocessing (Preserved) ---
+# --- Data Preprocessing ---
 required_customer_cols = ["NAME_OF_DT", "ACCOUNT_NUMBER", "METER_NUMBER", "CUSTOMER_NAME", "ADDRESS", "NAME_OF_FEEDER", "BUSINESS_UNIT", "UNDERTAKING", "TARIFF"]
 for col in required_customer_cols:
     if col not in ppm_df.columns: ppm_df[col] = ""
     if col not in ppd_df.columns: ppd_df[col] = ""
-
-default_rate = 209.5
-if "Rate (NGN)" not in tariff_df.columns:
-    rate_col = next((c for c in tariff_df.columns if "rate" in str(c).lower()), None)
-    if rate_col: tariff_df["Rate (NGN)"] = pd.to_numeric(tariff_df[rate_col], errors="coerce").fillna(default_rate)
-    else: tariff_df["Rate (NGN)"] = default_rate
 
 months = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN"]
 for df, unit in [(feeder_df, 1000), (ppm_df, 1), (ppd_df, 1)]:
@@ -335,11 +256,7 @@ for m in months:
     if m in dt_df.columns: dt_df[col] = pd.to_numeric(dt_df[m], errors="coerce").fillna(0)
     else: dt_df[col] = 0
 
-name_normalizations = [
-    ("Feeder", feeder_df), ("NAME_OF_FEEDER", ppm_df), ("NAME_OF_FEEDER", ppd_df), ("Feeder", band_df),
-    ("NAME_OF_DT", ppm_df), ("NAME_OF_DT", ppd_df), ("New Unique DT Nomenclature", dt_df),
-    ("TARIFF", ppm_df), ("TARIFF", ppd_df), ("Tariff", tariff_df)
-]
+name_normalizations = [("Feeder", feeder_df), ("NAME_OF_FEEDER", ppm_df), ("NAME_OF_FEEDER", ppd_df), ("Feeder", band_df), ("NAME_OF_DT", ppm_df), ("NAME_OF_DT", ppd_df), ("New Unique DT Nomenclature", dt_df), ("TARIFF", ppm_df), ("TARIFF", ppd_df), ("Tariff", tariff_df)]
 for col, df in name_normalizations:
     if col in df.columns: df[col] = df[col].apply(normalize_name)
 
@@ -350,15 +267,14 @@ customer_df = add_feeder_column_safe(customer_df, "NAME_OF_DT")
 dt_df["NAME_OF_DT"] = dt_df.get("New Unique DT Nomenclature", dt_df.get("NAME_OF_DT", ""))
 dt_df["Feeder"] = dt_df["NAME_OF_DT"].apply(lambda x: "-".join(x.split("-")[:-1]) if isinstance(x, str) and "-" in x and len(x.split("-")) >= 3 else x).apply(normalize_name)
 dt_df["total_energy_kwh"] = dt_df[[f"{m} (kWh)" for m in months]].sum(axis=1)
-
 dt_df["DT_Short_Name"] = dt_df["NAME_OF_DT"].apply(lambda x: get_short_name(x, is_dt=True))
 customer_df["DT_Short_Name"] = customer_df["NAME_OF_DT"].apply(lambda x: get_short_name(x, is_dt=True))
 
 required_id_vars = ["NAME_OF_DT", "DT_Short_Name", "ACCOUNT_NUMBER", "METER_NUMBER", "CUSTOMER_NAME", "ADDRESS", "Billing_Type", "Feeder", "BUSINESS_UNIT", "UNDERTAKING", "TARIFF"]
 for col in required_id_vars:
     if col not in customer_df.columns: customer_df[col] = ""
-
 value_vars = [f"{m} (kWh)" for m in months]
+
 customer_monthly = customer_df.melt(id_vars=required_id_vars, value_vars=value_vars, var_name="month", value_name="billed_kwh")
 customer_monthly["month"] = customer_monthly["month"].str.replace(" (kWh)", "")
 customer_monthly["month"] = pd.Categorical(customer_monthly["month"], categories=months, ordered=True)
@@ -367,7 +283,7 @@ dt_agg_monthly = dt_df.melt(id_vars=["NAME_OF_DT", "DT_Short_Name", "Feeder", "O
 dt_agg_monthly["month"] = dt_agg_monthly["month"].str.replace(" (kWh)", "")
 dt_agg_monthly["month"] = pd.Categorical(dt_agg_monthly["month"], categories=months, ordered=True)
 
-# --- UI Filters (Preserved) ---
+# --- UI Filters and Weights ---
 st.subheader("Filters")
 col1, col2, col3, col4, col5, col6 = st.columns([2, 2, 3, 3, 1, 1])
 with col1:
@@ -387,34 +303,35 @@ with col4:
     dt_options = sorted(dt_df_filtered["DT_Short_Name"].unique())
     selected_dt_short = st.selectbox("Select DT", dt_options)
 with col5: start_month = st.selectbox("Start Month", months, index=0)
-with col6: end_month = st.selectbox("End Month", months, index=len(months)-1)
+with col6: end_month = st.selectbox("End Month", months, index=5)
 
-# --- Model Selection and Weights (Preserved) ---
 st.subheader("Model Selection")
 model_choice = st.radio("Choose Risk Scoring Method", ('Weighted Rule-Based Model', 'Isolation Forest ML Model'), key='model_select')
 
 if model_choice == 'Weighted Rule-Based Model':
     st.subheader("Adjust Weighted Score Factors")
     colw1, colw2, colw3, colw4, colw5, colw6 = st.columns(6)
-    w_feeder = colw1.slider("Feeder Efficiency Weight", 0.0, 1.0, 0.2, 0.01)
-    w_dt = colw2.slider("DT Efficiency Weight", 0.0, 1.0, 0.2, 0.01)
-    w_location = colw3.slider("Location Trust Weight", 0.0, 1.0, 0.4, 0.01)
-    w_pattern = colw4.slider("Consumption Pattern Weight", 0.0, 1.0, 0.7, 0.01)
-    w_relative = colw5.slider("DT Relative Usage Weight", 0.0, 1.0, 0.7, 0.01)
-    w_zero = colw6.slider("Zero Frequency Weight", 0.0, 1.0, 0.7, 0.01)
-    total_w = w_feeder + w_dt + w_location + w_pattern + w_relative + w_zero
-    w_feeder, w_dt, w_location, w_pattern, w_relative, w_zero = [x/total_w for x in [w_feeder, w_dt, w_location, w_pattern, w_relative, w_zero]]
+    w_feeder = colw1.slider("Feeder Efficiency Weight", 0.0, 1.0, 0.2)
+    w_dt = colw2.slider("DT Efficiency Weight", 0.0, 1.0, 0.2)
+    w_location = colw3.slider("Location Trust Weight", 0.0, 1.0, 0.4)
+    w_pattern = colw4.slider("Consumption Pattern Weight", 0.0, 1.0, 0.7)
+    w_relative = colw5.slider("DT Relative Usage Weight", 0.0, 1.0, 0.7)
+    w_zero = colw6.slider("Zero Frequency Weight", 0.0, 1.0, 0.7)
+    total_weight = w_feeder + w_dt + w_location + w_pattern + w_relative + w_zero
+    w_feeder, w_dt, w_location, w_pattern, w_relative, w_zero = [x/total_weight for x in [w_feeder, w_dt, w_location, w_pattern, w_relative, w_zero]]
     contamination_rate = 0.01
 else:
-    contamination_rate = st.slider("Contamination Rate (%)", 0.005, 0.10, 0.01, 0.001)
+    contamination_rate = st.slider("Contamination Rate (%)", 0.005, 0.10, 0.01)
     w_feeder = w_dt = w_location = w_pattern = w_relative = w_zero = 1.0
 
-# --- Calculation Pipeline (Preserved) ---
-escalations_df_local = escalations_df.copy()
-escalations_df_local["Report_Count"] = 1
+# --- Calculation Pipeline ---
+escalations_df_local = escalations_df.copy(); escalations_df_local["Report_Count"] = 1
 feeder_escal = escalations_df_local.groupby("Feeder", as_index=False)["Report_Count"].sum()
 if not feeder_escal.empty: feeder_escal["location_trust_score"] = feeder_escal["Report_Count"] / feeder_escal["Report_Count"].max()
 else: feeder_escal = pd.DataFrame({"Feeder": feeder_df["Feeder"], "location_trust_score": 0.0})
+dt_escal = escalations_df_local.groupby("DT Nomenclature", as_index=False)["Report_Count"].sum()
+if not dt_escal.empty: dt_escal["location_trust_score"] = dt_escal["Report_Count"] / dt_escal["Report_Count"].max()
+else: dt_escal = pd.DataFrame({"DT Nomenclature": dt_df["NAME_OF_DT"], "location_trust_score": 0.0})
 
 pattern_df_full = calculate_pattern_deviation(customer_df, "ACCOUNT_NUMBER", [f"{m} (kWh)" for m in months])
 zero_df_full = calculate_zero_counter(customer_df, "ACCOUNT_NUMBER", [f"{m} (kWh)" for m in months])
@@ -424,47 +341,85 @@ dt_relative_df_sel = calculate_dt_relative_usage(customer_monthly_sel)
 
 customer_monthly_sel = customer_monthly_sel.merge(pattern_df_full, on="ACCOUNT_NUMBER", how="left").merge(zero_df_full, on="ACCOUNT_NUMBER", how="left").merge(dt_relative_df_sel, on="ACCOUNT_NUMBER", how="left")
 
-# Aggregation for efficiency
-customer_billed_monthly = customer_monthly_sel.groupby(["NAME_OF_DT", "month"], as_index=False)["billed_kwh"].sum().rename(columns={"billed_kwh":"customer_billed_kwh"})
-dt_merged_monthly = dt_agg_monthly.merge(customer_billed_monthly, on=["NAME_OF_DT", "month"], how="left")
-dt_merged_monthly["dt_billing_efficiency"] = (dt_merged_monthly["customer_billed_kwh"].fillna(0) / dt_merged_monthly["total_dt_kwh"].replace(0,1)).clip(0,1)
+# Aggregations
+customer_billed_monthly = customer_monthly_sel.groupby(["NAME_OF_DT", "DT_Short_Name", "month"], as_index=False)["billed_kwh"].sum().rename(columns={"billed_kwh":"customer_billed_kwh"})
+dt_merged_monthly = dt_agg_monthly.merge(customer_billed_monthly, on=["NAME_OF_DT", "DT_Short_Name", "month"], how="left")
+dt_merged_monthly["customer_billed_kwh"] = dt_merged_monthly["customer_billed_kwh"].fillna(0)
+dt_merged_monthly["total_billed_kwh"] = np.where(dt_merged_monthly.get("Ownership", "").str.strip().str.upper().isin(["PRIVATE"]), dt_merged_monthly["total_dt_kwh"], dt_merged_monthly["customer_billed_kwh"])
+dt_merged_monthly["dt_billing_efficiency"] = (dt_merged_monthly["total_billed_kwh"] / dt_merged_monthly["total_dt_kwh"].replace(0,1)).clip(0,1)
 
-# Weighted Score Calculation
-customer_monthly_sel["F_Feeder_Eff"], customer_monthly_sel["F_DT_Eff"] = 0.8, 0.8 # Proxies
-customer_monthly_sel.rename(columns={"pattern_deviation_score": "F_Pattern", "dt_relative_usage_score": "F_Relative", "zero_counter_score": "F_Zero"}, inplace=True)
-customer_monthly_sel["theft_probability_weighted"] = (w_pattern*customer_monthly_sel["F_Pattern"] + w_zero*customer_monthly_sel["F_Zero"] + w_relative*customer_monthly_sel["F_Relative"]).clip(0,1)
+feeder_monthly = feeder_df.melt(id_vars=["Feeder"], value_vars=[f"{m} (kWh)" for m in months], var_name="month", value_name="feeder_energy_kwh")
+feeder_monthly["month"] = feeder_monthly["month"].str.replace(" (kWh)", ""); feeder_monthly = feeder_monthly[feeder_monthly["month"].isin(selected_months)]
+feeder_agg = feeder_monthly.groupby("Feeder", as_index=False)["feeder_energy_kwh"].sum()
+dt_merged = dt_merged_monthly.groupby(["NAME_OF_DT", "DT_Short_Name", "Feeder", "Ownership", "Connection Status", "total_energy_kwh"], as_index=False)["total_dt_kwh"].sum()
+cust_agg_total = customer_monthly_sel.groupby(["NAME_OF_DT", "DT_Short_Name", "Feeder"], as_index=False)["billed_kwh"].sum().rename(columns={"billed_kwh":"customer_billed_kwh"})
+dt_merged = dt_merged.merge(cust_agg_total, on=["NAME_OF_DT", "DT_Short_Name", "Feeder"], how="left")
+dt_merged["customer_billed_kwh"] = dt_merged["customer_billed_kwh"].fillna(0); dt_merged["total_billed_kwh"] = np.where(dt_merged.get("Ownership", "").str.strip().str.upper().isin(["PRIVATE"]), dt_merged["total_dt_kwh"], dt_merged["customer_billed_kwh"])
+dt_merged["dt_billing_efficiency"] = (dt_merged["total_billed_kwh"] / dt_merged["total_dt_kwh"].replace(0,1)).clip(0,1)
+feeder_agg_billed = dt_merged.groupby("Feeder", as_index=False)["total_billed_kwh"].sum()
+feeder_merged = feeder_agg.merge(feeder_agg_billed, on="Feeder", how="left"); feeder_merged["total_billed_kwh"] = feeder_merged["total_billed_kwh"].fillna(0)
+feeder_merged["feeder_billing_efficiency"] = (feeder_merged["total_billed_kwh"] / feeder_merged["feeder_energy_kwh"].replace(0,1)).clip(0,1)
+feeder_merged["location_trust_score"] = feeder_merged.merge(feeder_escal[["Feeder", "location_trust_score"]], on="Feeder", how="left")["location_trust_score"].fillna(0.0)
 
-# ML Calculation
-ml_features = ["F_Pattern", "F_Relative", "F_Zero"]
-customer_features = run_isolation_forest(customer_monthly_sel.groupby("ACCOUNT_NUMBER")[ml_features].mean().reset_index(), ml_features, contamination_rate)
+customer_monthly_sel = customer_monthly_sel.merge(feeder_merged[["Feeder", "feeder_billing_efficiency", "location_trust_score"]], on="Feeder", how="left").merge(dt_merged[["NAME_OF_DT", "DT_Short_Name", "dt_billing_efficiency"]], on=["NAME_OF_DT", "DT_Short_Name"], how="left")
+merged_dt = customer_monthly_sel.merge(dt_escal[["DT Nomenclature", "location_trust_score"]].rename(columns={"location_trust_score": "location_trust_score_dt"}), left_on="NAME_OF_DT", right_on="DT Nomenclature", how="left")
+customer_monthly_sel["location_trust_score"] = merged_dt["location_trust_score_dt"].fillna(customer_monthly_sel["location_trust_score"]).fillna(0.0)
+
+customer_monthly_sel.rename(columns={"pattern_deviation_score": "F_Pattern", "dt_relative_usage_score": "F_Relative", "zero_counter_score": "F_Zero", "feeder_billing_efficiency": "F_Feeder_Eff", "dt_billing_efficiency": "F_DT_Eff", "location_trust_score": "F_Location_Risk"}, inplace=True)
+customer_monthly_sel["theft_probability_weighted"] = (w_feeder*(1-customer_monthly_sel["F_Feeder_Eff"]) + w_dt*(1-customer_monthly_sel["F_DT_Eff"]) + w_location*customer_monthly_sel["F_Location_Risk"] + w_pattern*customer_monthly_sel["F_Pattern"] + w_relative*customer_monthly_sel["F_Relative"] + w_zero*customer_monthly_sel["F_Zero"]).clip(0,1)
+
+ml_features = ["F_Pattern", "F_Relative", "F_Zero", "F_Location_Risk", "F_Feeder_Eff", "F_DT_Eff"]
+customer_features = customer_monthly_sel.groupby("ACCOUNT_NUMBER")[ml_features].mean().reset_index()
+customer_features = run_isolation_forest(customer_features, ml_features, contamination_rate)
 customer_monthly_sel = customer_monthly_sel.merge(customer_features[["ACCOUNT_NUMBER", "theft_probability_ml"]], on="ACCOUNT_NUMBER", how="left")
 
 score_column = "theft_probability_weighted" if model_choice == 'Weighted Rule-Based Model' else "theft_probability_ml"
 final_score_col = "Weighted Probability (Avg)" if model_choice == 'Weighted Rule-Based Model' else "ML Probability (Avg)"
+customer_monthly_sel["risk_tier"] = pd.cut(customer_monthly_sel[score_column], bins=[0,0.4,0.7,1.0], labels=["Low", "Medium", "High"], include_lowest=True)
 
-# --- Visualization (Preserved) ---
-st.subheader(f"Risk Heatmap ({final_score_col})")
-if selected_dt_short:
-    filtered_customers = customer_monthly_sel[customer_monthly_sel["DT_Short_Name"] == selected_dt_short]
-    if not filtered_customers.empty:
-        pivot_data = filtered_customers.pivot_table(index="ACCOUNT_NUMBER", columns="month", values=score_column, aggfunc="mean").reindex(columns=selected_months)
-        plt.figure(figsize=(10, 5))
-        sns.heatmap(pivot_data, cmap="YlOrBr", vmin=0, vmax=1, cbar_kws={'label': 'Risk Score'})
-        st.pyplot(plt.gcf())
-        plt.close()
+# Aggregation for display
+month_customers = customer_monthly_sel.groupby(["ACCOUNT_NUMBER", "METER_NUMBER", "CUSTOMER_NAME", "ADDRESS", "Billing_Type", "DT_Short_Name"], as_index=False).agg({"billed_kwh": "sum", "theft_probability_weighted": "mean", "theft_probability_ml": "mean", "F_Pattern": "mean", "F_Relative": "mean", "F_Zero": "mean"})
+month_customers = month_customers.rename(columns={"billed_kwh": "billed_kwh_total", "theft_probability_weighted": "Weighted Probability (Avg)", "theft_probability_ml": "ML Probability (Avg)", "F_Pattern": "Pattern Deviation Score", "F_Relative": "DT Relative Usage Score", "F_Zero": "Zero Frequency Score"})
+sort_column = final_score_col
 
-# --- Customer Risk Table (Preserved) ---
-st.subheader(f"Customer Risk List ({final_score_col})")
-month_customers = customer_monthly_sel.groupby(["ACCOUNT_NUMBER", "METER_NUMBER", "CUSTOMER_NAME", "Billing_Type", "DT_Short_Name"], as_index=False).agg({"billed_kwh": "sum", "theft_probability_weighted": "mean", "theft_probability_ml": "mean", "F_Pattern": "mean", "F_Zero": "mean", "F_Relative": "mean"})
-display_df = month_customers[month_customers["DT_Short_Name"] == selected_dt_short].sort_values(score_column, ascending=False)
-st.dataframe(display_df, use_container_width=True)
+# --- Visualization ---
+st.subheader(f"DT Risk Heatmap")
+dt_filtered = dt_merged_monthly[dt_merged_monthly["Feeder"] == selected_feeder]
+if not dt_filtered.empty:
+    dt_scores = dt_filtered.groupby("DT_Short_Name")["dt_billing_efficiency"].mean().reset_index()
+    order = dt_scores.sort_values("dt_billing_efficiency")["DT_Short_Name"].tolist()
+    dt_pivot = dt_filtered.pivot_table(index="DT_Short_Name", columns="month", values="dt_billing_efficiency").reindex(index=order, columns=selected_months)
+    plt.figure(figsize=(10, max(4, len(dt_pivot)/2))); sns.heatmap(1 - dt_pivot, vmin=0, vmax=1, cmap="Reds"); st.pyplot(plt.gcf()); plt.close()
 
-# --- Reporting and Export (Preserved) ---
-st.subheader("Export & Escalations")
+st.subheader(f"Customer Theft Probability Heatmap")
+filtered_customers = customer_monthly_sel[customer_monthly_sel["DT_Short_Name"] == selected_dt_short]
+if not filtered_customers.empty:
+    customer_scores = filtered_customers.groupby("ACCOUNT_NUMBER")[score_column].mean().reset_index()
+    customer_order = customer_scores.sort_values(score_column, ascending=False)["ACCOUNT_NUMBER"].tolist()
+    pivot_data = filtered_customers.pivot_table(index="ACCOUNT_NUMBER", columns="month", values=score_column).reindex(index=customer_order[:20], columns=selected_months)
+    plt.figure(figsize=(10, 8)); sns.heatmap(pivot_data, vmin=0, vmax=1, cmap="Reds"); st.pyplot(plt.gcf()); plt.close()
+
+st.subheader(f"Customer Risk List")
+display_df = month_customers[month_customers["DT_Short_Name"] == selected_dt_short].sort_values(sort_column, ascending=False)
+st.dataframe(display_df.style.format({"billed_kwh_total": "{:.2f}", "Weighted Probability (Avg)": "{:.3f}", "ML Probability (Avg)": "{:.3f}"}), use_container_width=True)
+
+st.subheader("Feeder Summary")
+st.dataframe(feeder_merged.style.format({"feeder_billing_efficiency": "{:.3f}"}), use_container_width=True)
+
+st.subheader("DT Summary")
+dt_summary_show = dt_merged.copy()
+st.dataframe(dt_summary_show[["NAME_OF_DT", "DT_Short_Name", "total_dt_kwh", "total_billed_kwh", "dt_billing_efficiency"]].style.format({"dt_billing_efficiency": "{:.3f}"}), use_container_width=True)
+
+# Reports
+st.subheader("Reports")
+csv = display_df.to_csv(index=False).encode('utf-8')
+st.download_button(label="Download Customer List", data=csv, file_name="theft_list.csv", mime="text/csv")
+
+cust_scores_avg = customer_monthly_sel.groupby("ACCOUNT_NUMBER", as_index=False).agg({"theft_probability_weighted": "mean", "theft_probability_ml": "mean"})
+escal_report_df = generate_escalations_report(ppm_df, ppd_df, escalations_df, cust_scores_avg, months, sort_column)
 towrite = io.BytesIO()
-with pd.ExcelWriter(towrite, engine='openpyxl') as writer:
-    customer_monthly_sel.to_excel(writer, index=False, sheet_name="Full Analysis")
-st.download_button(label="📥 Download Full Report🐘", data=towrite.getvalue(), file_name="SniffIt_Full_Report.xlsx")
+with pd.ExcelWriter(towrite, engine='openpyxl') as writer: escal_report_df.to_excel(writer, index=False)
+st.download_button(label="📥 Download Escalations Report", data=towrite.getvalue(), file_name="Escalations.xlsx")
 
-# --- Footer ---
-st.markdown(f"<div class='footer'>Built by Elvis Ebenuwah for Ikeja Electric. SniffIt🐘 2026.</div>", unsafe_allow_html=True)
+st.markdown("---")
+st.markdown("Built by Elvis Ebenuwah for Ikeja Electric. SniffIt🐘 2026.")
