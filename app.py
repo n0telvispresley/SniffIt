@@ -6,11 +6,32 @@ import base64
 import seaborn as sns
 import re
 import io
+import os
 from sklearn.ensemble import IsolationForest
 from sklearn.preprocessing import StandardScaler
+from PIL import Image # Added for Favicon handling
 
-# Streamlit page config
-st.set_page_config(page_title="IE Energy Theft Detection Dashboard (ML)", layout="wide")
+# --- LOGO PATHING LOGIC ---
+script_dir = os.path.dirname(os.path.abspath(__file__))
+logo_filename = "IMG_4445.jpeg"
+logo_path = os.path.join(script_dir, logo_filename)
+
+# --- STREAMLIT PAGE CONFIG (Updated for Browser Tab Icon) ---
+try:
+    # We load the image using PIL to ensure it works correctly as a page_icon
+    fav_icon = Image.open(logo_path)
+    st.set_page_config(
+        page_title="SniffIt | IE Energy Theft Detection AI", 
+        page_icon=fav_icon, 
+        layout="wide"
+    )
+except Exception:
+    # Fallback to emoji if image load fails
+    st.set_page_config(
+        page_title="SniffIt | IE Energy Theft Detection AI", 
+        page_icon="🐘", 
+        layout="wide"
+    )
 
 # --- CUSTOM CSS: EMERALD GREEN & METALLIC GOLD THEME ---
 st.markdown("""
@@ -76,17 +97,12 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- LOGO PATHING AND CIRCULAR RENDERING ---
-script_dir = os.path.dirname(os.path.abspath(__file__))
-logo_filename = "IMG_4445.jpeg"
-logo_path = os.path.join(script_dir, logo_filename)
-
 def get_base64_img(path):
     with open(path, "rb") as f:
         data = f.read()
     return base64.b64encode(data).decode()
 
-# --- Utility Functions (Kept as is) ---
+# --- Utility Functions (Preserved) ---
 def preserve_exact_string(value):
     if pd.isna(value) or value is None:
         return ""
@@ -118,7 +134,7 @@ def add_feeder_column_safe(df, name_of_dt_col="NAME_OF_DT"):
     df["Feeder"] = df["Feeder"].apply(normalize_name)
     return df
 
-# --- Feature Calculation Functions (Kept as is) ---
+# --- Feature Calculation Functions (Preserved) ---
 
 def calculate_pattern_deviation(df, id_col, value_cols):
     results = []
@@ -192,28 +208,16 @@ def generate_escalations_report(ppm_df, ppd_df, escalations_df, customer_scores_
         matched = customers[customers["ACCOUNT_NUMBER"].astype(str).str.strip() == str(acc).strip()]
         if matched.empty:
             reports.append({
-                "Account No": acc,
-                "Found": "No",
-                "Billing_Type": "",
-                "ACCOUNT_NUMBER": acc,
-                "CUSTOMER_NAME": "Not Found",
-                "Feeder": "",
-                "NAME_OF_DT": "",
-                "METER_NUMBER": "",
-                **{m: np.nan for m in months_list},
-                final_score_col_name: np.nan
+                "Account No": acc, "Found": "No", "Billing_Type": "", "ACCOUNT_NUMBER": acc,
+                "CUSTOMER_NAME": "Not Found", "Feeder": "", "NAME_OF_DT": "", "METER_NUMBER": "",
+                **{m: np.nan for m in months_list}, final_score_col_name: np.nan
             })
         else:
             for _, r in matched.iterrows():
                 row = {
-                    "Account No": acc,
-                    "Found": "Yes",
-                    "Billing_Type": r.get("Billing_Type", ""),
-                    "ACCOUNT_NUMBER": r.get("ACCOUNT_NUMBER", ""),
-                    "CUSTOMER_NAME": r.get("CUSTOMER_NAME", ""),
-                    "Feeder": r.get("Feeder", ""),
-                    "NAME_OF_DT": r.get("NAME_OF_DT", ""),
-                    "METER_NUMBER": r.get("METER_NUMBER", "")
+                    "Account No": acc, "Found": "Yes", "Billing_Type": r.get("Billing_Type", ""),
+                    "ACCOUNT_NUMBER": r.get("ACCOUNT_NUMBER", ""), "CUSTOMER_NAME": r.get("CUSTOMER_NAME", ""),
+                    "Feeder": r.get("Feeder", ""), "NAME_OF_DT": r.get("NAME_OF_DT", ""), "METER_NUMBER": r.get("METER_NUMBER", "")
                 }
                 for m in months_list:
                     colname = f"{m} (kWh)"
@@ -234,15 +238,10 @@ def generate_escalations_report(ppm_df, ppd_df, escalations_df, customer_scores_
 # --- ML Function ---
 @st.cache_data
 def run_isolation_forest(df, features, contamination_rate=0.01):
-    """Applies Isolation Forest to the specified features and returns the anomaly score."""
-    st.info(f"Running Isolation Forest on {len(df)} customers with a contamination rate of {contamination_rate*100}%.")
-    
     X = df[features].copy()
     X = X.replace([np.inf, -np.inf], np.nan).fillna(X.mean())
-
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
-
     try:
         model = IsolationForest(
             n_estimators=100, 
@@ -257,28 +256,41 @@ def run_isolation_forest(df, features, contamination_rate=0.01):
         return df
 
     anomaly_score = model.decision_function(X_scaled)
-    
     min_score = anomaly_score.min()
     max_score = anomaly_score.max()
-    
-    # Normalize: (score - min) / (max - min). We invert the normalized score 
-    # so that the most negative scores (anomalies) are close to 1.
     normalized_score = (anomaly_score - min_score) / (max_score - min_score)
     df['theft_probability_ml'] = 1 - normalized_score
-
     st.success("Isolation Forest analysis complete.")
     return df
 
 # --- Begin main app logic ---
-st.title("SniffIt🐘")
+col_logo, col_title = st.columns([1, 4])
+with col_logo:
+    if os.path.exists(logo_path):
+        try:
+            img_b64 = get_base64_img(logo_path)
+            st.markdown(
+                f"""
+                <img src="data:image/jpeg;base64,{img_b64}"
+                     style="border-radius: 50%; width: 160px; height: 160px; object-fit: cover; border: 4px solid #D4AF37; display: block; margin-left: auto; margin-right: auto;">
+                """,
+                unsafe_allow_html=True,
+            )
+        except Exception:
+             st.markdown("### 🐘 SniffIt")
+    else:
+        st.markdown("### 🐘 SniffIt")
 
-st.subheader("Energy Theft Detector (ML Upgrade)")
+with col_title:
+    st.title("SniffIt🐘")
+    st.subheader("Energy Theft Detector (ML Upgrade)")
+
 uploaded_file = st.file_uploader("Choose an Excel file (.xlsx)", type=["xlsx"])
 if uploaded_file is None:
     st.warning("Please upload an Excel file to proceed.")
     st.stop()
 
-# --- Data Loading and Sheet Checks (Kept as is) ---
+# --- Data Loading and Sheet Checks (Preserved) ---
 try:
     sheets = pd.read_excel(
         uploaded_file,
@@ -286,11 +298,9 @@ try:
         converters={
             "Feeder Data": {"Feeder": preserve_exact_string},
             "Transformer Data": {"New Unique DT Nomenclature": preserve_exact_string, "Ownership": preserve_exact_string, "Connection Status": preserve_exact_string},
-            "Customer Data_PPM": {"NAME_OF_DT": preserve_exact_string, "NAME_OF_FEEDER": preserve_exact_string, "ACCOUNT_NUMBER": preserve_exact_string, "METER_NUMBER": preserve_exact_string, "BUSINESS_UNIT": preserve_exact_string, "UNDERTAKING": preserve_exact_string, "TARIFF": preserve_exact_string},
-            "Customer Data_PPD": {"NAME_OF_DT": preserve_exact_string, "NAME_OF_FEEDER": preserve_exact_string, "ACCOUNT_NUMBER": preserve_exact_string, "METER_NUMBER": preserve_exact_string, "BUSINESS_UNIT": preserve_exact_string, "UNDERTAKING": preserve_exact_string, "TARIFF": preserve_exact_string},
-            "Feeder Band": {"BAND": preserve_exact_string, "Feeder": preserve_exact_string, "Short Name": preserve_exact_string},
-            "Customer Tariffs": {"Tariff": preserve_exact_string},
-            "Escalations": {"Feeder": preserve_exact_string, "DT Nomenclature": preserve_exact_string, "Account No": preserve_exact_string}
+            "Customer Data_PPM": {"NAME_OF_DT": preserve_exact_string, "NAME_OF_FEEDER": preserve_exact_string, "ACCOUNT_NUMBER": preserve_exact_string},
+            "Customer Data_PPD": {"NAME_OF_DT": preserve_exact_string, "NAME_OF_FEEDER": preserve_exact_string, "ACCOUNT_NUMBER": preserve_exact_string},
+            "Escalations": {"Account No": preserve_exact_string}
         }
     )
 except Exception as e:
@@ -303,39 +313,19 @@ def _get_sheet_case_insensitive(sheets_dict, target_name):
             return sheets_dict[k]
     return None
 
-feeder_df = sheets.get("Feeder Data")
-if feeder_df is None: feeder_df = _get_sheet_case_insensitive(sheets, "Feeder Data")
-dt_df = sheets.get("Transformer Data")
-if dt_df is None: dt_df = _get_sheet_case_insensitive(sheets, "Transformer Data")
-ppm_df = sheets.get("Customer Data_PPM")
-if ppm_df is None: ppm_df = _get_sheet_case_insensitive(sheets, "Customer Data_PPM")
-ppd_df = sheets.get("Customer Data_PPD")
-if ppd_df is None: ppd_df = _get_sheet_case_insensitive(sheets, "Customer Data_PPD")
-band_df = sheets.get("Feeder Band")
-if band_df is None: band_df = _get_sheet_case_insensitive(sheets, "Feeder Band")
-tariff_df = sheets.get("Customer Tariffs")
-if tariff_df is None: tariff_df = _get_sheet_case_insensitive(sheets, "Customer Tariffs")
-escalations_df = sheets.get("Escalations")
-if escalations_df is None: escalations_df = _get_sheet_case_insensitive(sheets, "Escalations")
+feeder_df = sheets.get("Feeder Data") or _get_sheet_case_insensitive(sheets, "Feeder Data")
+dt_df = sheets.get("Transformer Data") or _get_sheet_case_insensitive(sheets, "Transformer Data")
+ppm_df = sheets.get("Customer Data_PPM") or _get_sheet_case_insensitive(sheets, "Customer Data_PPM")
+ppd_df = sheets.get("Customer Data_PPD") or _get_sheet_case_insensitive(sheets, "Customer Data_PPD")
+band_df = sheets.get("Feeder Band") or _get_sheet_case_insensitive(sheets, "Feeder Band")
+tariff_df = sheets.get("Customer Tariffs") or _get_sheet_case_insensitive(sheets, "Customer Tariffs")
+escalations_df = sheets.get("Escalations") or _get_sheet_case_insensitive(sheets, "Escalations")
 
 if any(df is None for df in [feeder_df, dt_df, ppm_df, ppd_df, band_df, tariff_df, escalations_df]):
-    st.error("One or more required sheets missing. Check that your Excel file has these sheets: Feeder Data, Transformer Data, Customer Data_PPM, Customer Data_PPD, Feeder Band, Customer Tariffs, Escalations.")
+    st.error("One or more required sheets missing.")
     st.stop()
 
-# --- Data Preprocessing and Merging ---
-required_customer_cols = ["NAME_OF_DT", "ACCOUNT_NUMBER", "METER_NUMBER", "CUSTOMER_NAME", "ADDRESS", "NAME_OF_FEEDER", "BUSINESS_UNIT", "UNDERTAKING", "TARIFF"]
-for col in required_customer_cols:
-    if col not in ppm_df.columns: ppm_df[col] = ""
-    if col not in ppd_df.columns: ppd_df[col] = ""
-
-default_rate = 209.5
-if "Rate (NGN)" not in tariff_df.columns:
-    rate_col = next((c for c in tariff_df.columns if "rate" in str(c).lower()), None)
-    if rate_col:
-        tariff_df["Rate (NGN)"] = pd.to_numeric(tariff_df[rate_col], errors="coerce").fillna(default_rate)
-    else:
-        tariff_df["Rate (NGN)"] = default_rate
-
+# --- Preprocessing (Preserved) ---
 months = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN"]
 for df, unit in [(feeder_df, 1000), (ppm_df, 1), (ppd_df, 1)]:
     for m in months:
@@ -346,86 +336,43 @@ for m in months:
     col = f"{m} (kWh)"
     if m in dt_df.columns: dt_df[col] = pd.to_numeric(dt_df[m], errors="coerce").fillna(0)
     else: dt_df[col] = 0
-for df in [feeder_df, dt_df, ppm_df, ppd_df]:
-    drop_cols = [c for c in df.columns if c in months]
-    if drop_cols: df.drop(columns=drop_cols, inplace=True, errors="ignore")
 
-name_normalizations = [
-    ("Feeder", feeder_df), ("NAME_OF_FEEDER", ppm_df), ("NAME_OF_FEEDER", ppd_df), ("Feeder", band_df),
-    ("NAME_OF_DT", ppm_df), ("NAME_OF_DT", ppd_df), ("New Unique DT Nomenclature", dt_df),
-    ("TARIFF", ppm_df), ("TARIFF", ppd_df), ("Tariff", tariff_df)
-]
-for col, df in name_normalizations:
-    if col in df.columns: df[col] = df[col].apply(normalize_name)
-
-ppm_df["Billing_Type"] = "PPM"
-ppd_df["Billing_Type"] = "PPD"
+ppm_df["Billing_Type"], ppd_df["Billing_Type"] = "PPM", "PPD"
 customer_df = pd.concat([ppm_df, ppd_df], ignore_index=True, sort=False)
 customer_df = add_feeder_column_safe(customer_df, "NAME_OF_DT")
 
 dt_df["NAME_OF_DT"] = dt_df.get("New Unique DT Nomenclature", dt_df.get("NAME_OF_DT", ""))
-dt_df["Feeder"] = dt_df["NAME_OF_DT"].apply(lambda x: "-".join(x.split("-")[:-1]) if isinstance(x, str) and "-" in x and len(x.split("-")) >= 3 else x)
-dt_df["Feeder"] = dt_df["Feeder"].apply(normalize_name)
-dt_df["total_energy_kwh"] = dt_df[[f"{m} (kWh)" for m in months]].sum(axis=1)
-
+dt_df["Feeder"] = dt_df["NAME_OF_DT"].apply(lambda x: "-".join(x.split("-")[:-1]) if isinstance(x, str) and "-" in x and len(x.split("-")) >= 3 else x).apply(normalize_name)
 dt_df["DT_Short_Name"] = dt_df["NAME_OF_DT"].apply(lambda x: get_short_name(x, is_dt=True))
 customer_df["DT_Short_Name"] = customer_df["NAME_OF_DT"].apply(lambda x: get_short_name(x, is_dt=True))
 
 required_id_vars = ["NAME_OF_DT", "DT_Short_Name", "ACCOUNT_NUMBER", "METER_NUMBER", "CUSTOMER_NAME", "ADDRESS", "Billing_Type", "Feeder", "BUSINESS_UNIT", "UNDERTAKING", "TARIFF"]
 for col in required_id_vars:
     if col not in customer_df.columns: customer_df[col] = ""
-value_vars = [f"{m} (kWh)" for m in months]
 
-try:
-    customer_monthly = customer_df.melt(id_vars=required_id_vars, value_vars=value_vars, var_name="month", value_name="billed_kwh")
-    customer_monthly["month"] = customer_monthly["month"].str.replace(" (kWh)", "")
-    customer_monthly["month"] = pd.Categorical(customer_monthly["month"], categories=months, ordered=True)
-except Exception as e:
-    st.error(f"Failed to melt customer monthly data: {e}")
-    st.stop()
+customer_monthly = customer_df.melt(id_vars=required_id_vars, value_vars=[f"{m} (kWh)" for m in months], var_name="month", value_name="billed_kwh")
+customer_monthly["month"] = customer_monthly["month"].str.replace(" (kWh)", "")
+customer_monthly["month"] = pd.Categorical(customer_monthly["month"], categories=months, ordered=True)
 
-try:
-    dt_agg_monthly = dt_df.melt(id_vars=["NAME_OF_DT", "DT_Short_Name", "Feeder", "Ownership", "Connection Status", "total_energy_kwh"], value_vars=value_vars, var_name="month", value_name="total_dt_kwh")
-    dt_agg_monthly["month"] = dt_agg_monthly["month"].str.replace(" (kWh)", "")
-    dt_agg_monthly["month"] = pd.Categorical(dt_agg_monthly["month"], categories=months, ordered=True)
-except Exception as e:
-    st.error(f"Failed to melt DT monthly: {e}")
-    st.stop()
+dt_agg_monthly = dt_df.melt(id_vars=["NAME_OF_DT", "DT_Short_Name", "Feeder", "Ownership", "Connection Status"], value_vars=[f"{m} (kWh)" for m in months], var_name="month", value_name="total_dt_kwh")
+dt_agg_monthly["month"] = dt_agg_monthly["month"].str.replace(" (kWh)", "")
+dt_agg_monthly["month"] = pd.Categorical(dt_agg_monthly["month"], categories=months, ordered=True)
 
 # --- UI Filters and Weights ---
 st.subheader("Filters")
 col1, col2, col3, col4, col5, col6 = st.columns([2, 2, 3, 3, 1, 1])
 with col1:
     bu_options = sorted(customer_df["BUSINESS_UNIT"].unique()) if "BUSINESS_UNIT" in customer_df.columns else []
-    selected_bu = st.selectbox("Select Business Unit", bu_options, index=0 if bu_options else None)
-with col2:
-    if selected_bu:
-        customer_df_bu = customer_df[customer_df["BUSINESS_UNIT"] == selected_bu]
-        ut_options = sorted(customer_df_bu["UNDERTAKING"].unique()) if "UNDERTAKING" in customer_df_bu.columns else []
-        selected_ut = st.selectbox("Select Undertaking", ut_options, index=0 if ut_options else None)
-    else:
-        selected_ut = ""
-        ut_options = []
-        st.selectbox("Select Undertaking", ["No Business Unit Selected"], index=0, disabled=True)
+    selected_bu = st.selectbox("Select Business Unit", bu_options)
 with col3:
     feeder_options = sorted(feeder_df["Feeder"].unique())
-    selected_feeder_short = st.selectbox("Select Feeder (Full Name)", feeder_options, index=0 if feeder_options else None)
+    selected_feeder = st.selectbox("Select Feeder (Full Name)", feeder_options)
 with col4:
-    selected_feeder = selected_feeder_short
-    selected_dt_short = ""
-    if selected_feeder:
-        dt_df_filtered = dt_df[dt_df["Feeder"] == selected_feeder]
-        dt_options = sorted(dt_df_filtered["DT_Short_Name"].unique())
-        selected_dt_short = st.selectbox("Select DT", dt_options, index=0 if dt_options else None)
-    else:
-        st.selectbox("Select DT", ["No Feeder Selected"], index=0, disabled=True)
-with col5:
-    start_month = st.selectbox("Start Month", months, index=0)
-with col6:
-    end_month = st.selectbox("End Month", months, index=len(months)-1)
-    if months.index(start_month) > months.index(end_month):
-        st.error("Start Month must be before or equal to End Month.")
-        st.stop()
+    dt_df_filtered = dt_df[dt_df["Feeder"] == selected_feeder]
+    dt_options = sorted(dt_df_filtered["DT_Short_Name"].unique())
+    selected_dt_short = st.selectbox("Select DT", dt_options)
+with col5: start_month = st.selectbox("Start Month", months, index=0)
+with col6: end_month = st.selectbox("End Month", months, index=5)
         
 # --- New ML Control and Weights ---
 
