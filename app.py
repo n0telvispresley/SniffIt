@@ -10,21 +10,21 @@ from sklearn.ensemble import IsolationForest
 from sklearn.preprocessing import StandardScaler
 
 # --- STREAMLIT PAGE CONFIG ---
-st.set_page_config(page_title="SniffIt | IE Energy Theft Detection", layout="wide")
+st.set_page_config(page_title="IE Energy Theft Detection Dashboard (ML)", layout="wide")
 
-# --- CUSTOM CSS: GREEN & GOLD TECH THEME ---
+# --- CUSTOM CSS: GREEN & GOLD THEME ---
 st.markdown("""
     <style>
-    /* Main app background */
+    /* Main Background and Text */
     .stApp {
         background-color: #002b16; /* Deep Emerald Green */
         color: #FFFFFF;
     }
     
     /* Headers and Titles */
-    h1, h2, h3 {
-        color: #D4AF37 !important; /* Gold */
-        font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    h1, h2, h3, h4, h5, h6 {
+        color: #D4AF37 !important; /* Metallic Gold */
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
         font-weight: 700 !important;
     }
 
@@ -41,37 +41,67 @@ st.markdown("""
         font-weight: bold;
         border-radius: 8px;
         border: 1px solid #B8860B;
-        transition: 0.3s;
+        transition: 0.3s ease-in-out;
     }
     .stButton>button:hover {
         background-color: #FFD700 !important;
         transform: scale(1.02);
+        box-shadow: 0px 0px 10px rgba(212, 175, 55, 0.4);
     }
 
-    /* Input Fields and Selectboxes */
-    .stSelectbox, .stSlider, .stTextInput {
+    /* Input Widgets */
+    .stSelectbox, .stSlider, .stTextInput, .stRadio {
         color: #D4AF37 !important;
     }
-
+    
     /* Dataframe Styling */
     .stDataFrame {
         border: 1px solid #D4AF37;
     }
 
-    /* Alerts */
+    /* Success/Info/Warning Messages */
     .stAlert {
         background-color: #004d26;
         color: #f1f1f1;
         border: 1px solid #D4AF37;
+    }
+    
+    /* Heatmap/Plot Containers */
+    .stPlot {
+        background-color: #ffffff;
+        padding: 10px;
+        border-radius: 10px;
+    }
+
+    /* Footer */
+    .footer {
+        position: fixed;
+        left: 0;
+        bottom: 0;
+        width: 100%;
+        background-color: #001a0d;
+        color: #D4AF37;
+        text-align: center;
+        padding: 10px;
+        font-size: 14px;
+        border-top: 1px solid #D4AF37;
     }
     </style>
     """, unsafe_allow_html=True)
 
 # --- LOGO PATHING LOGIC ---
 script_dir = os.path.dirname(os.path.abspath(__file__))
-logo_path = os.path.join(script_dir, "Sniffit Logo.png")
+# Check for renamed file (No spaces)
+possible_names = ["SniffitLogo.png", "sniffitlogo.png", "Sniffit_Logo.png", "Sniffit Logo.png"]
+logo_path = None
 
-# --- UTILITY FUNCTIONS (Preserved) ---
+for name in possible_names:
+    test_path = os.path.join(script_dir, name)
+    if os.path.exists(test_path):
+        logo_path = test_path
+        break
+
+# --- Utility Functions (Preserved) ---
 def preserve_exact_string(value):
     if pd.isna(value) or value is None:
         return ""
@@ -103,7 +133,7 @@ def add_feeder_column_safe(df, name_of_dt_col="NAME_OF_DT"):
     df["Feeder"] = df["Feeder"].apply(normalize_name)
     return df
 
-# --- FEATURE CALCULATION FUNCTIONS (Preserved) ---
+# --- Feature Calculation Functions (Preserved) ---
 def calculate_pattern_deviation(df, id_col, value_cols):
     results = []
     valid_cols = [c for c in value_cols if c in df.columns]
@@ -203,7 +233,7 @@ def generate_escalations_report(ppm_df, ppd_df, escalations_df, customer_scores_
                 reports.append(row)
     return pd.DataFrame(reports)
 
-# --- ML FUNCTION (Preserved) ---
+# --- ML Function (Preserved) ---
 @st.cache_data
 def run_isolation_forest(df, features, contamination_rate=0.01):
     st.info(f"Running Isolation Forest on {len(df)} customers with a contamination rate of {contamination_rate*100}%.")
@@ -227,14 +257,14 @@ def run_isolation_forest(df, features, contamination_rate=0.01):
 
 # --- BEGIN MAIN APP LOGIC ---
 
-# UI HEADER WITH LOGO FIX
+# UI HEADER
 col_logo, col_title = st.columns([1, 4])
 with col_logo:
-    if os.path.exists(logo_path):
+    if logo_path:
         st.image(logo_path, width=160)
     else:
         st.markdown("### 🐘 SniffIt")
-        st.caption(f"Logo not found at: {logo_path}")
+        # Optional: st.caption(f"Logo not found in directory.")
 
 with col_title:
     st.title("SniffIt🐘")
@@ -245,7 +275,7 @@ if uploaded_file is None:
     st.warning("Please upload an Excel file to proceed.")
     st.stop()
 
-# --- DATA LOADING (Preserved) ---
+# --- Data Loading and Sheet Checks (Preserved) ---
 try:
     sheets = pd.read_excel(
         uploaded_file,
@@ -279,14 +309,20 @@ tariff_df = sheets.get("Customer Tariffs") or _get_sheet_case_insensitive(sheets
 escalations_df = sheets.get("Escalations") or _get_sheet_case_insensitive(sheets, "Escalations")
 
 if any(df is None for df in [feeder_df, dt_df, ppm_df, ppd_df, band_df, tariff_df, escalations_df]):
-    st.error("Missing required sheets. Please check the Excel file structure.")
+    st.error("One or more required sheets missing. Check file structure.")
     st.stop()
 
-# --- PREPROCESSING (Preserved) ---
+# --- Data Preprocessing (Preserved) ---
 required_customer_cols = ["NAME_OF_DT", "ACCOUNT_NUMBER", "METER_NUMBER", "CUSTOMER_NAME", "ADDRESS", "NAME_OF_FEEDER", "BUSINESS_UNIT", "UNDERTAKING", "TARIFF"]
 for col in required_customer_cols:
     if col not in ppm_df.columns: ppm_df[col] = ""
     if col not in ppd_df.columns: ppd_df[col] = ""
+
+default_rate = 209.5
+if "Rate (NGN)" not in tariff_df.columns:
+    rate_col = next((c for c in tariff_df.columns if "rate" in str(c).lower()), None)
+    if rate_col: tariff_df["Rate (NGN)"] = pd.to_numeric(tariff_df[rate_col], errors="coerce").fillna(default_rate)
+    else: tariff_df["Rate (NGN)"] = default_rate
 
 months = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN"]
 for df, unit in [(feeder_df, 1000), (ppm_df, 1), (ppd_df, 1)]:
@@ -331,7 +367,7 @@ dt_agg_monthly = dt_df.melt(id_vars=["NAME_OF_DT", "DT_Short_Name", "Feeder", "O
 dt_agg_monthly["month"] = dt_agg_monthly["month"].str.replace(" (kWh)", "")
 dt_agg_monthly["month"] = pd.Categorical(dt_agg_monthly["month"], categories=months, ordered=True)
 
-# --- FILTERS (Preserved) ---
+# --- UI Filters (Preserved) ---
 st.subheader("Filters")
 col1, col2, col3, col4, col5, col6 = st.columns([2, 2, 3, 3, 1, 1])
 with col1:
@@ -353,29 +389,30 @@ with col4:
 with col5: start_month = st.selectbox("Start Month", months, index=0)
 with col6: end_month = st.selectbox("End Month", months, index=len(months)-1)
 
-# --- SCORING SELECTION (Preserved) ---
+# --- Model Selection and Weights (Preserved) ---
 st.subheader("Model Selection")
 model_choice = st.radio("Choose Risk Scoring Method", ('Weighted Rule-Based Model', 'Isolation Forest ML Model'), key='model_select')
 
 if model_choice == 'Weighted Rule-Based Model':
+    st.subheader("Adjust Weighted Score Factors")
     colw1, colw2, colw3, colw4, colw5, colw6 = st.columns(6)
-    w_feeder = colw1.slider("Feeder Eff Weight", 0.0, 1.0, 0.2)
-    w_dt = colw2.slider("DT Eff Weight", 0.0, 1.0, 0.2)
-    w_location = colw3.slider("Location Trust Weight", 0.0, 1.0, 0.4)
-    w_pattern = colw4.slider("Pattern Weight", 0.0, 1.0, 0.7)
-    w_relative = colw5.slider("Relative Usage Weight", 0.0, 1.0, 0.7)
-    w_zero = colw6.slider("Zero Freq Weight", 0.0, 1.0, 0.7)
+    w_feeder = colw1.slider("Feeder Efficiency Weight", 0.0, 1.0, 0.2, 0.01)
+    w_dt = colw2.slider("DT Efficiency Weight", 0.0, 1.0, 0.2, 0.01)
+    w_location = colw3.slider("Location Trust Weight", 0.0, 1.0, 0.4, 0.01)
+    w_pattern = colw4.slider("Consumption Pattern Weight", 0.0, 1.0, 0.7, 0.01)
+    w_relative = colw5.slider("DT Relative Usage Weight", 0.0, 1.0, 0.7, 0.01)
+    w_zero = colw6.slider("Zero Frequency Weight", 0.0, 1.0, 0.7, 0.01)
     total_w = w_feeder + w_dt + w_location + w_pattern + w_relative + w_zero
     w_feeder, w_dt, w_location, w_pattern, w_relative, w_zero = [x/total_w for x in [w_feeder, w_dt, w_location, w_pattern, w_relative, w_zero]]
     contamination_rate = 0.01
 else:
-    contamination_rate = st.sidebar.slider("Contamination Rate (%)", 0.005, 0.10, 0.01)
+    contamination_rate = st.slider("Contamination Rate (%)", 0.005, 0.10, 0.01, 0.001)
     w_feeder = w_dt = w_location = w_pattern = w_relative = w_zero = 1.0
 
-# --- CALCULATION LOGIC (Preserved) ---
+# --- Calculation Pipeline (Preserved) ---
 escalations_df_local = escalations_df.copy()
 escalations_df_local["Report_Count"] = 1
-feeder_escal = escalations_df_local.groupby("Feeder")["Report_Count"].sum().reset_index()
+feeder_escal = escalations_df_local.groupby("Feeder", as_index=False)["Report_Count"].sum()
 if not feeder_escal.empty: feeder_escal["location_trust_score"] = feeder_escal["Report_Count"] / feeder_escal["Report_Count"].max()
 else: feeder_escal = pd.DataFrame({"Feeder": feeder_df["Feeder"], "location_trust_score": 0.0})
 
@@ -387,22 +424,17 @@ dt_relative_df_sel = calculate_dt_relative_usage(customer_monthly_sel)
 
 customer_monthly_sel = customer_monthly_sel.merge(pattern_df_full, on="ACCOUNT_NUMBER", how="left").merge(zero_df_full, on="ACCOUNT_NUMBER", how="left").merge(dt_relative_df_sel, on="ACCOUNT_NUMBER", how="left")
 
-# Efficiency calculations
-dt_merged_monthly = dt_agg_monthly.merge(customer_monthly_sel.groupby(["NAME_OF_DT", "month"])["billed_kwh"].sum().reset_index().rename(columns={"billed_kwh":"customer_billed_kwh"}), on=["NAME_OF_DT", "month"], how="left")
+# Aggregation for efficiency
+customer_billed_monthly = customer_monthly_sel.groupby(["NAME_OF_DT", "month"], as_index=False)["billed_kwh"].sum().rename(columns={"billed_kwh":"customer_billed_kwh"})
+dt_merged_monthly = dt_agg_monthly.merge(customer_billed_monthly, on=["NAME_OF_DT", "month"], how="left")
 dt_merged_monthly["dt_billing_efficiency"] = (dt_merged_monthly["customer_billed_kwh"].fillna(0) / dt_merged_monthly["total_dt_kwh"].replace(0,1)).clip(0,1)
 
-feeder_merged = feeder_df.copy()
-feeder_merged["feeder_billing_efficiency"] = 0.8 # Simplified proxy
-
-customer_monthly_sel = customer_monthly_sel.merge(feeder_merged[["Feeder", "feeder_billing_efficiency"]], on="Feeder", how="left")
-customer_monthly_sel["location_trust_score"] = 0.1 # Placeholder
-
-customer_monthly_sel.rename(columns={"pattern_deviation_score": "F_Pattern", "dt_relative_usage_score": "F_Relative", "zero_counter_score": "F_Zero", "feeder_billing_efficiency": "F_Feeder_Eff", "location_trust_score": "F_Location_Risk"}, inplace=True)
-customer_monthly_sel["F_DT_Eff"] = 0.8
-
-# Score logic
+# Weighted Score Calculation
+customer_monthly_sel["F_Feeder_Eff"], customer_monthly_sel["F_DT_Eff"] = 0.8, 0.8 # Proxies
+customer_monthly_sel.rename(columns={"pattern_deviation_score": "F_Pattern", "dt_relative_usage_score": "F_Relative", "zero_counter_score": "F_Zero"}, inplace=True)
 customer_monthly_sel["theft_probability_weighted"] = (w_pattern*customer_monthly_sel["F_Pattern"] + w_zero*customer_monthly_sel["F_Zero"] + w_relative*customer_monthly_sel["F_Relative"]).clip(0,1)
 
+# ML Calculation
 ml_features = ["F_Pattern", "F_Relative", "F_Zero"]
 customer_features = run_isolation_forest(customer_monthly_sel.groupby("ACCOUNT_NUMBER")[ml_features].mean().reset_index(), ml_features, contamination_rate)
 customer_monthly_sel = customer_monthly_sel.merge(customer_features[["ACCOUNT_NUMBER", "theft_probability_ml"]], on="ACCOUNT_NUMBER", how="left")
@@ -410,7 +442,7 @@ customer_monthly_sel = customer_monthly_sel.merge(customer_features[["ACCOUNT_NU
 score_column = "theft_probability_weighted" if model_choice == 'Weighted Rule-Based Model' else "theft_probability_ml"
 final_score_col = "Weighted Probability (Avg)" if model_choice == 'Weighted Rule-Based Model' else "ML Probability (Avg)"
 
-# --- HEATMAPS (Preserved) ---
+# --- Visualization (Preserved) ---
 st.subheader(f"Risk Heatmap ({final_score_col})")
 if selected_dt_short:
     filtered_customers = customer_monthly_sel[customer_monthly_sel["DT_Short_Name"] == selected_dt_short]
@@ -421,18 +453,18 @@ if selected_dt_short:
         st.pyplot(plt.gcf())
         plt.close()
 
-# --- CUSTOMER LIST (Preserved) ---
-st.subheader(f"Customer Risk List")
-display_cols = ["ACCOUNT_NUMBER", "CUSTOMER_NAME", "Billing_Type", score_column]
-st.dataframe(customer_monthly_sel[display_cols].drop_duplicates().sort_values(score_column, ascending=False), use_container_width=True)
+# --- Customer Risk Table (Preserved) ---
+st.subheader(f"Customer Risk List ({final_score_col})")
+month_customers = customer_monthly_sel.groupby(["ACCOUNT_NUMBER", "METER_NUMBER", "CUSTOMER_NAME", "Billing_Type", "DT_Short_Name"], as_index=False).agg({"billed_kwh": "sum", "theft_probability_weighted": "mean", "theft_probability_ml": "mean", "F_Pattern": "mean", "F_Zero": "mean", "F_Relative": "mean"})
+display_df = month_customers[month_customers["DT_Short_Name"] == selected_dt_short].sort_values(score_column, ascending=False)
+st.dataframe(display_df, use_container_width=True)
 
-# --- EXPORT & REPORTS (Preserved) ---
-st.subheader("Reports")
+# --- Reporting and Export (Preserved) ---
+st.subheader("Export & Escalations")
 towrite = io.BytesIO()
 with pd.ExcelWriter(towrite, engine='openpyxl') as writer:
-    customer_monthly_sel.to_excel(writer, index=False, sheet_name="Analysis")
-st.download_button(label="📥 Download Full Report🐘", data=towrite.getvalue(), file_name="SniffIt_Report.xlsx")
+    customer_monthly_sel.to_excel(writer, index=False, sheet_name="Full Analysis")
+st.download_button(label="📥 Download Full Report🐘", data=towrite.getvalue(), file_name="SniffIt_Full_Report.xlsx")
 
-# --- FOOTER ---
-st.markdown("---")
-st.markdown("Built by Elvis Ebenuwah for Ikeja Electric. SniffIt🐘 2026.")
+# --- Footer ---
+st.markdown(f"<div class='footer'>Built by Elvis Ebenuwah for Ikeja Electric. SniffIt🐘 2026.</div>", unsafe_allow_html=True)
