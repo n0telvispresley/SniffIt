@@ -72,7 +72,7 @@ st.markdown("""
         color: #D4AF37 !important;
     }
     
-    /* Plotly/Matplotlib Containers */
+    /* Plot containers */
     .stPlot {
         background-color: #ffffff;
         padding: 10px;
@@ -81,19 +81,11 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- BULLETPROOF LOGO PATHING ---
+# --- LOGO PATHING LOGIC ---
 script_dir = os.path.dirname(os.path.abspath(__file__))
-# Check for common variations of the filename
-possible_names = ["Sniffit Logo.png", "SniffitLogo.png", "sniffit_logo.png", "SniffitLogo.PNG"]
-logo_path = None
+logo_path = os.path.join(script_dir, "sniffitlogo.png")
 
-for name in possible_names:
-    test_path = os.path.join(script_dir, name)
-    if os.path.exists(test_path):
-        logo_path = test_path
-        break
-
-# --- UTILITY FUNCTIONS (PRESERVED) ---
+# --- Utility Functions ---
 def preserve_exact_string(value):
     if pd.isna(value) or value is None:
         return ""
@@ -125,7 +117,7 @@ def add_feeder_column_safe(df, name_of_dt_col="NAME_OF_DT"):
     df["Feeder"] = df["Feeder"].apply(normalize_name)
     return df
 
-# --- FEATURE CALCULATION FUNCTIONS (PRESERVED) ---
+# --- Feature Calculation Functions ---
 def calculate_pattern_deviation(df, id_col, value_cols):
     results = []
     valid_cols = [c for c in value_cols if c in df.columns]
@@ -225,7 +217,7 @@ def generate_escalations_report(ppm_df, ppd_df, escalations_df, customer_scores_
                 reports.append(row)
     return pd.DataFrame(reports)
 
-# --- ML FUNCTION (PRESERVED) ---
+# --- ML Function ---
 @st.cache_data
 def run_isolation_forest(df, features, contamination_rate=0.01):
     st.info(f"Running Isolation Forest on {len(df)} customers with a contamination rate of {contamination_rate*100}%.")
@@ -247,28 +239,27 @@ def run_isolation_forest(df, features, contamination_rate=0.01):
     st.success("Isolation Forest analysis complete.")
     return df
 
-# --- UI HEADER ---
+# --- Begin main app logic ---
+
+# UI HEADER
 col_logo, col_title = st.columns([1, 4])
 with col_logo:
-    if logo_path:
+    if os.path.exists(logo_path):
         st.image(logo_path, width=160)
     else:
-        # Debugger if file is not found
-        st.error("Logo Not Found!")
-        all_files = os.listdir(script_dir)
-        st.write("Folder contents:", all_files)
         st.markdown("### 🐘 SniffIt")
+        # st.error(f"Logo not found at {logo_path}") # Debug line
 
 with col_title:
     st.title("SniffIt🐘")
-    st.subheader("Energy Theft Detection AI")
+    st.subheader("Energy Theft Detector (ML Upgrade)")
 
 uploaded_file = st.file_uploader("Choose an Excel file (.xlsx)", type=["xlsx"])
 if uploaded_file is None:
     st.warning("Please upload an Excel file to proceed.")
     st.stop()
 
-# --- DATA LOADING (PRESERVED) ---
+# --- Data Loading and Sheet Checks ---
 try:
     sheets = pd.read_excel(
         uploaded_file,
@@ -302,10 +293,10 @@ tariff_df = sheets.get("Customer Tariffs") or _get_sheet_case_insensitive(sheets
 escalations_df = sheets.get("Escalations") or _get_sheet_case_insensitive(sheets, "Escalations")
 
 if any(df is None for df in [feeder_df, dt_df, ppm_df, ppd_df, band_df, tariff_df, escalations_df]):
-    st.error("Missing required sheets. Check that your Excel file has all required tabs.")
+    st.error("One or more required sheets missing. Check that your Excel file has: Feeder Data, Transformer Data, Customer Data_PPM, Customer Data_PPD, Feeder Band, Customer Tariffs, Escalations.")
     st.stop()
 
-# --- PREPROCESSING (PRESERVED) ---
+# --- Data Preprocessing and Merging ---
 required_customer_cols = ["NAME_OF_DT", "ACCOUNT_NUMBER", "METER_NUMBER", "CUSTOMER_NAME", "ADDRESS", "NAME_OF_FEEDER", "BUSINESS_UNIT", "UNDERTAKING", "TARIFF"]
 for col in required_customer_cols:
     if col not in ppm_df.columns: ppm_df[col] = ""
@@ -363,7 +354,7 @@ dt_agg_monthly = dt_df.melt(id_vars=["NAME_OF_DT", "DT_Short_Name", "Feeder", "O
 dt_agg_monthly["month"] = dt_agg_monthly["month"].str.replace(" (kWh)", "")
 dt_agg_monthly["month"] = pd.Categorical(dt_agg_monthly["month"], categories=months, ordered=True)
 
-# --- UI FILTERS ---
+# --- UI Filters and Weights ---
 st.subheader("Filters")
 col1, col2, col3, col4, col5, col6 = st.columns([2, 2, 3, 3, 1, 1])
 with col1:
@@ -383,9 +374,9 @@ with col4:
     dt_options = sorted(dt_df_filtered["DT_Short_Name"].unique())
     selected_dt_short = st.selectbox("Select DT", dt_options)
 with col5: start_month = st.selectbox("Start Month", months, index=0)
-with col6: end_month = st.selectbox("End Month", months, index=5)
+with col6: end_month = st.selectbox("End Month", months, index=len(months)-1)
 
-# --- SCORING MODEL (PRESERVED) ---
+# --- ML Control and Weights ---
 st.subheader("Model Selection")
 model_choice = st.radio("Choose Risk Scoring Method", ('Weighted Rule-Based Model', 'Isolation Forest ML Model'), key='model_select')
 
@@ -398,15 +389,14 @@ if model_choice == 'Weighted Rule-Based Model':
     w_pattern = colw4.slider("Consumption Pattern Weight", 0.0, 1.0, 0.7, 0.01)
     w_relative = colw5.slider("DT Relative Usage Weight", 0.0, 1.0, 0.7, 0.01)
     w_zero = colw6.slider("Zero Frequency Weight", 0.0, 1.0, 0.7, 0.01)
-    
-    tw = w_feeder + w_dt + w_location + w_pattern + w_relative + w_zero
-    w_feeder, w_dt, w_location, w_pattern, w_relative, w_zero = [x/tw for x in [w_feeder, w_dt, w_location, w_pattern, w_relative, w_zero]]
+    total_w = w_feeder + w_dt + w_location + w_pattern + w_relative + w_zero
+    w_feeder, w_dt, w_location, w_pattern, w_relative, w_zero = [x/total_w for x in [w_feeder, w_dt, w_location, w_pattern, w_relative, w_zero]]
     contamination_rate = 0.01
 else:
-    contamination_rate = st.slider("Contamination Rate (%)", 0.005, 0.10, 0.01)
+    contamination_rate = st.slider("Contamination Rate (%)", 0.005, 0.10, 0.01, 0.001)
     w_feeder = w_dt = w_location = w_pattern = w_relative = w_zero = 1.0
 
-# --- CALCULATIONS (PRESERVED) ---
+# --- Calculation Pipeline ---
 escalations_df_local = escalations_df.copy(); escalations_df_local["Report_Count"] = 1
 feeder_escal = escalations_df_local.groupby("Feeder", as_index=False)["Report_Count"].sum()
 if not feeder_escal.empty: feeder_escal["location_trust_score"] = feeder_escal["Report_Count"] / feeder_escal["Report_Count"].max()
@@ -423,7 +413,7 @@ dt_relative_df_sel = calculate_dt_relative_usage(customer_monthly_sel)
 
 customer_monthly_sel = customer_monthly_sel.merge(pattern_df_full, on="ACCOUNT_NUMBER", how="left").merge(zero_df_full, on="ACCOUNT_NUMBER", how="left").merge(dt_relative_df_sel, on="ACCOUNT_NUMBER", how="left")
 
-# Aggregation and Efficiencies
+# Aggregate Efficiencies
 customer_billed_monthly = customer_monthly_sel.groupby(["NAME_OF_DT", "DT_Short_Name", "month"], as_index=False)["billed_kwh"].sum().rename(columns={"billed_kwh":"customer_billed_kwh"})
 dt_merged_monthly = dt_agg_monthly.merge(customer_billed_monthly, on=["NAME_OF_DT", "DT_Short_Name", "month"], how="left")
 dt_merged_monthly["customer_billed_kwh"] = dt_merged_monthly["customer_billed_kwh"].fillna(0)
@@ -447,7 +437,6 @@ customer_monthly_sel = customer_monthly_sel.merge(feeder_merged[["Feeder", "feed
 merged_dt = customer_monthly_sel.merge(dt_escal[["DT Nomenclature", "location_trust_score"]].rename(columns={"location_trust_score": "location_trust_score_dt"}), left_on="NAME_OF_DT", right_on="DT Nomenclature", how="left")
 customer_monthly_sel["location_trust_score"] = merged_dt["location_trust_score_dt"].fillna(customer_monthly_sel["location_trust_score"]).fillna(0.0)
 
-# Scores
 customer_monthly_sel.rename(columns={"pattern_deviation_score": "F_Pattern", "dt_relative_usage_score": "F_Relative", "zero_counter_score": "F_Zero", "feeder_billing_efficiency": "F_Feeder_Eff", "dt_billing_efficiency": "F_DT_Eff", "location_trust_score": "F_Location_Risk"}, inplace=True)
 customer_monthly_sel["theft_probability_weighted"] = (w_feeder*(1-customer_monthly_sel["F_Feeder_Eff"]) + w_dt*(1-customer_monthly_sel["F_DT_Eff"]) + w_location*customer_monthly_sel["F_Location_Risk"] + w_pattern*customer_monthly_sel["F_Pattern"] + w_relative*customer_monthly_sel["F_Relative"] + w_zero*customer_monthly_sel["F_Zero"]).clip(0,1)
 
@@ -477,7 +466,9 @@ if not dt_filtered.empty:
 st.subheader(f"Customer Heatmap")
 filtered_c = customer_monthly_sel[customer_monthly_sel["DT_Short_Name"] == selected_dt_short]
 if not filtered_c.empty:
-    piv = filtered_c.pivot_table(index="ACCOUNT_NUMBER", columns="month", values=score_column).reindex(columns=selected_months)
+    customer_scores = filtered_c.groupby("ACCOUNT_NUMBER")[score_column].mean().reset_index()
+    customer_order = customer_scores.sort_values(score_column, ascending=False)["ACCOUNT_NUMBER"].tolist()
+    piv = filtered_c.pivot_table(index="ACCOUNT_NUMBER", columns="month", values=score_column).reindex(index=customer_order[:15], columns=selected_months)
     plt.figure(figsize=(10, 8)); sns.heatmap(piv, vmin=0, vmax=1, cmap="Reds"); st.pyplot(plt.gcf()); plt.close()
 
 st.subheader("Customer Risk List")
@@ -490,7 +481,7 @@ st.dataframe(feeder_merged.style.format({"feeder_billing_efficiency": "{:.3f}"})
 st.subheader("DT Summary")
 st.dataframe(dt_merged[["NAME_OF_DT", "DT_Short_Name", "total_dt_kwh", "total_billed_kwh", "dt_billing_efficiency"]].style.format({"dt_billing_efficiency": "{:.3f}"}), use_container_width=True)
 
-# --- REPORTS ---
+# Reports
 st.subheader("Reports")
 csv = display_df.to_csv(index=False).encode('utf-8')
 st.download_button(label="Download Customer List", data=csv, file_name="theft_report.csv", mime="text/csv")
