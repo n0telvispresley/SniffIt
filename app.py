@@ -403,16 +403,26 @@ dt_agg_monthly["month"] = pd.Categorical(dt_agg_monthly["month"], categories=mon
 # --- UI Filters and Weights ---
 st.subheader("Filters")
 col1, col2, col3, col4, col5, col6 = st.columns([2, 2, 3, 3, 1, 1])
+
 with col1:
-    bu_options = sorted(customer_df["BUSINESS_UNIT"].unique()) if "BUSINESS_UNIT" in customer_df.columns else []
+    bu_options = sorted(customer_df["BUSINESS_UNIT"].unique())
     selected_bu = st.selectbox("Select Business Unit", bu_options)
+
+with col2:
+    # Filter undertakings based on BU
+    ut_options = sorted(customer_df[customer_df["BUSINESS_UNIT"] == selected_bu]["UNDERTAKING"].unique())
+    selected_ut = st.selectbox("Select Undertaking", ut_options)
+
 with col3:
-    feeder_options = sorted(feeder_df["Feeder"].unique())
-    selected_feeder = st.selectbox("Select Feeder (Full Name)", feeder_options)
+    # Filter feeders based on Undertaking
+    feeder_options = sorted(customer_df[customer_df["UNDERTAKING"] == selected_ut]["Feeder"].unique())
+    selected_feeder = st.selectbox("Select Feeder", feeder_options)
+
 with col4:
-    dt_df_filtered = dt_df[dt_df["Feeder"] == selected_feeder]
-    dt_options = sorted(dt_df_filtered["DT_Short_Name"].unique())
+    # Filter DTs based on Feeder
+    dt_options = sorted(customer_df[customer_df["Feeder"] == selected_feeder]["DT_Short_Name"].unique())
     selected_dt_short = st.selectbox("Select DT", dt_options)
+
 with col5: start_month = st.selectbox("Start Month", months, index=0)
 with col6: end_month = st.selectbox("End Month", months, index=5)
         
