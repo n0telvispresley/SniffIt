@@ -358,6 +358,8 @@ for m in months:
     if m in dt_df.columns: dt_df[col] = pd.to_numeric(dt_df[m], errors="coerce").fillna(0)
     else: dt_df[col] = 0
 
+dt_df["total_energy_kwh"] = dt_df[[f"{m} (kWh)" for m in months]].sum(axis=1)
+
 # Calculate the total energy column for the Transformer Data
 month_cols = [f"{m} (kWh)" for m in months]
 dt_df["total_energy_kwh"] = dt_df[month_cols].sum(axis=1)
