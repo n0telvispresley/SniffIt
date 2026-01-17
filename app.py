@@ -375,7 +375,13 @@ customer_monthly = customer_df.melt(id_vars=required_id_vars, value_vars=[f"{m} 
 customer_monthly["month"] = customer_monthly["month"].str.replace(" (kWh)", "")
 customer_monthly["month"] = pd.Categorical(customer_monthly["month"], categories=months, ordered=True)
 
-dt_agg_monthly = dt_df.melt(id_vars=["NAME_OF_DT", "DT_Short_Name", "Feeder", "Ownership", "Connection Status"], value_vars=[f"{m} (kWh)" for m in months], var_name="month", value_name="total_dt_kwh")
+# Added "total_energy_kwh" to id_vars to preserve it during the transformation
+dt_agg_monthly = dt_df.melt(
+    id_vars=["NAME_OF_DT", "DT_Short_Name", "Feeder", "Ownership", "Connection Status", "total_energy_kwh"], 
+    value_vars=[f"{m} (kWh)" for m in months], 
+    var_name="month", 
+    value_name="total_dt_kwh"
+)
 dt_agg_monthly["month"] = dt_agg_monthly["month"].str.replace(" (kWh)", "")
 dt_agg_monthly["month"] = pd.Categorical(dt_agg_monthly["month"], categories=months, ordered=True)
 
