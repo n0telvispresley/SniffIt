@@ -1,8 +1,8 @@
 pandas
 numpy
 scikit-learn
-streamlit
+streamlit>=1.41.0
 matplotlib
 openpyxl
 seaborn
-altair<5
+pillow
