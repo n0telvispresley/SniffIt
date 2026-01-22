@@ -5,3 +5,4 @@ streamlit
 matplotlib
 openpyxl
 seaborn
+altair<5
