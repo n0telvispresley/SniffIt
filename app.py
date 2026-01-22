@@ -1,13 +1,3 @@
-import sys
-try:
-    import imghdr
-except ImportError:
-    import types
-    # Create a fake 'imghdr' module so Streamlit doesn't crash
-    m = types.ModuleType('imghdr')
-    m.what = lambda filename, h=None: None
-    sys.modules['imghdr'] = m
-    
 import pandas as pd
 import numpy as np
 import streamlit as st
